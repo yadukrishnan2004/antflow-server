@@ -2,9 +2,12 @@ package workflow
 
 import "time"
 
+
+
 // WorkflowDefinition represents a registered workflow type.
 type WorkflowDefinition struct {
 	Name      string
+	Steps     []string
 	CreatedAt time.Time
 }
 
@@ -20,21 +23,15 @@ type WorkflowExecution struct {
 	UpdatedAt time.Time
 }
 
-type TaskType string
-
-const (
-	TaskTypeWorkflow TaskType = "WORKFLOW"
-	TaskTypeActivity TaskType = "ACTIVITY"
-)
-
 // Activity is a single unit of work within a workflow.
 type Task struct {
 	ID                  string
 	WorkflowExecutionID string
-	TaskQueue  string
-	Name       string
-	TaskType   TaskType
-	Input      []byte
+	TaskQueue           string
+	Name                string
+	StepName            string
+	StepIndex           int
+	Input               []byte
 	Output     []byte
 	State      State
 	Error      string

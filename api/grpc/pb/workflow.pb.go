@@ -22,58 +22,10 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type TaskType int32
-
-const (
-	TaskType_TASK_TYPE_UNSPECIFIED TaskType = 0
-	TaskType_TASK_TYPE_WORKFLOW    TaskType = 1
-	TaskType_TASK_TYPE_ACTIVITY    TaskType = 2
-)
-
-// Enum value maps for TaskType.
-var (
-	TaskType_name = map[int32]string{
-		0: "TASK_TYPE_UNSPECIFIED",
-		1: "TASK_TYPE_WORKFLOW",
-		2: "TASK_TYPE_ACTIVITY",
-	}
-	TaskType_value = map[string]int32{
-		"TASK_TYPE_UNSPECIFIED": 0,
-		"TASK_TYPE_WORKFLOW":    1,
-		"TASK_TYPE_ACTIVITY":    2,
-	}
-)
-
-func (x TaskType) Enum() *TaskType {
-	p := new(TaskType)
-	*p = x
-	return p
-}
-
-func (x TaskType) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (TaskType) Descriptor() protoreflect.EnumDescriptor {
-	return file_api_proto_workflow_proto_enumTypes[0].Descriptor()
-}
-
-func (TaskType) Type() protoreflect.EnumType {
-	return &file_api_proto_workflow_proto_enumTypes[0]
-}
-
-func (x TaskType) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use TaskType.Descriptor instead.
-func (TaskType) EnumDescriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{0}
-}
-
 type RegisterWorkflowRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Steps         []string               `protobuf:"bytes,2,rep,name=steps,proto3" json:"steps,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -113,6 +65,13 @@ func (x *RegisterWorkflowRequest) GetName() string {
 		return x.Name
 	}
 	return ""
+}
+
+func (x *RegisterWorkflowRequest) GetSteps() []string {
+	if x != nil {
+		return x.Steps
+	}
+	return nil
 }
 
 type RegisterWorkflowResponse struct {
@@ -429,8 +388,8 @@ type StreamTaskResponse struct {
 	WorkflowId    string                 `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
 	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	Input         []byte                 `protobuf:"bytes,4,opt,name=input,proto3" json:"input,omitempty"`
-	TaskType      TaskType               `protobuf:"varint,5,opt,name=task_type,json=taskType,proto3,enum=workflow.TaskType" json:"task_type,omitempty"`
-	History       []*HistoryEvent        `protobuf:"bytes,6,rep,name=history,proto3" json:"history,omitempty"` // Provided for WORKFLOW tasks
+	StepName      string                 `protobuf:"bytes,5,opt,name=step_name,json=stepName,proto3" json:"step_name,omitempty"`
+	StepIndex     int32                  `protobuf:"varint,6,opt,name=step_index,json=stepIndex,proto3" json:"step_index,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -493,18 +452,18 @@ func (x *StreamTaskResponse) GetInput() []byte {
 	return nil
 }
 
-func (x *StreamTaskResponse) GetTaskType() TaskType {
+func (x *StreamTaskResponse) GetStepName() string {
 	if x != nil {
-		return x.TaskType
+		return x.StepName
 	}
-	return TaskType_TASK_TYPE_UNSPECIFIED
+	return ""
 }
 
-func (x *StreamTaskResponse) GetHistory() []*HistoryEvent {
+func (x *StreamTaskResponse) GetStepIndex() int32 {
 	if x != nil {
-		return x.History
+		return x.StepIndex
 	}
-	return nil
+	return 0
 }
 
 type CompleteTaskRequest struct {
@@ -619,178 +578,6 @@ func (x *CompleteTaskResponse) GetSuccess() bool {
 	return false
 }
 
-type ScheduleActivityCommand struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ActivityName  string                 `protobuf:"bytes,1,opt,name=activity_name,json=activityName,proto3" json:"activity_name,omitempty"`
-	Input         []byte                 `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ScheduleActivityCommand) Reset() {
-	*x = ScheduleActivityCommand{}
-	mi := &file_api_proto_workflow_proto_msgTypes[9]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ScheduleActivityCommand) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ScheduleActivityCommand) ProtoMessage() {}
-
-func (x *ScheduleActivityCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_workflow_proto_msgTypes[9]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ScheduleActivityCommand.ProtoReflect.Descriptor instead.
-func (*ScheduleActivityCommand) Descriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{9}
-}
-
-func (x *ScheduleActivityCommand) GetActivityName() string {
-	if x != nil {
-		return x.ActivityName
-	}
-	return ""
-}
-
-func (x *ScheduleActivityCommand) GetInput() []byte {
-	if x != nil {
-		return x.Input
-	}
-	return nil
-}
-
-type RespondWorkflowTaskCompletedRequest struct {
-	state             protoimpl.MessageState     `protogen:"open.v1"`
-	TaskId            string                     `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	WorkerId          string                     `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	Commands          []*ScheduleActivityCommand `protobuf:"bytes,3,rep,name=commands,proto3" json:"commands,omitempty"`                                             // Activities to schedule next
-	WorkflowCompleted bool                       `protobuf:"varint,4,opt,name=workflow_completed,json=workflowCompleted,proto3" json:"workflow_completed,omitempty"` // True if the workflow is fully done
-	WorkflowResult    []byte                     `protobuf:"bytes,5,opt,name=workflow_result,json=workflowResult,proto3" json:"workflow_result,omitempty"`           // Final result if completed
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *RespondWorkflowTaskCompletedRequest) Reset() {
-	*x = RespondWorkflowTaskCompletedRequest{}
-	mi := &file_api_proto_workflow_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RespondWorkflowTaskCompletedRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RespondWorkflowTaskCompletedRequest) ProtoMessage() {}
-
-func (x *RespondWorkflowTaskCompletedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_workflow_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RespondWorkflowTaskCompletedRequest.ProtoReflect.Descriptor instead.
-func (*RespondWorkflowTaskCompletedRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *RespondWorkflowTaskCompletedRequest) GetTaskId() string {
-	if x != nil {
-		return x.TaskId
-	}
-	return ""
-}
-
-func (x *RespondWorkflowTaskCompletedRequest) GetWorkerId() string {
-	if x != nil {
-		return x.WorkerId
-	}
-	return ""
-}
-
-func (x *RespondWorkflowTaskCompletedRequest) GetCommands() []*ScheduleActivityCommand {
-	if x != nil {
-		return x.Commands
-	}
-	return nil
-}
-
-func (x *RespondWorkflowTaskCompletedRequest) GetWorkflowCompleted() bool {
-	if x != nil {
-		return x.WorkflowCompleted
-	}
-	return false
-}
-
-func (x *RespondWorkflowTaskCompletedRequest) GetWorkflowResult() []byte {
-	if x != nil {
-		return x.WorkflowResult
-	}
-	return nil
-}
-
-type RespondWorkflowTaskCompletedResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RespondWorkflowTaskCompletedResponse) Reset() {
-	*x = RespondWorkflowTaskCompletedResponse{}
-	mi := &file_api_proto_workflow_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RespondWorkflowTaskCompletedResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RespondWorkflowTaskCompletedResponse) ProtoMessage() {}
-
-func (x *RespondWorkflowTaskCompletedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_workflow_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RespondWorkflowTaskCompletedResponse.ProtoReflect.Descriptor instead.
-func (*RespondWorkflowTaskCompletedResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *RespondWorkflowTaskCompletedResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
 type GetWorkflowResultRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
@@ -800,7 +587,7 @@ type GetWorkflowResultRequest struct {
 
 func (x *GetWorkflowResultRequest) Reset() {
 	*x = GetWorkflowResultRequest{}
-	mi := &file_api_proto_workflow_proto_msgTypes[12]
+	mi := &file_api_proto_workflow_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -812,7 +599,7 @@ func (x *GetWorkflowResultRequest) String() string {
 func (*GetWorkflowResultRequest) ProtoMessage() {}
 
 func (x *GetWorkflowResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_workflow_proto_msgTypes[12]
+	mi := &file_api_proto_workflow_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -825,7 +612,7 @@ func (x *GetWorkflowResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkflowResultRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkflowResultRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{12}
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetWorkflowResultRequest) GetWorkflowId() string {
@@ -846,7 +633,7 @@ type GetWorkflowResultResponse struct {
 
 func (x *GetWorkflowResultResponse) Reset() {
 	*x = GetWorkflowResultResponse{}
-	mi := &file_api_proto_workflow_proto_msgTypes[13]
+	mi := &file_api_proto_workflow_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -858,7 +645,7 @@ func (x *GetWorkflowResultResponse) String() string {
 func (*GetWorkflowResultResponse) ProtoMessage() {}
 
 func (x *GetWorkflowResultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_workflow_proto_msgTypes[13]
+	mi := &file_api_proto_workflow_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -871,7 +658,7 @@ func (x *GetWorkflowResultResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkflowResultResponse.ProtoReflect.Descriptor instead.
 func (*GetWorkflowResultResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{13}
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetWorkflowResultResponse) GetState() string {
@@ -904,7 +691,7 @@ type CancelWorkflowRequest struct {
 
 func (x *CancelWorkflowRequest) Reset() {
 	*x = CancelWorkflowRequest{}
-	mi := &file_api_proto_workflow_proto_msgTypes[14]
+	mi := &file_api_proto_workflow_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -916,7 +703,7 @@ func (x *CancelWorkflowRequest) String() string {
 func (*CancelWorkflowRequest) ProtoMessage() {}
 
 func (x *CancelWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_workflow_proto_msgTypes[14]
+	mi := &file_api_proto_workflow_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -929,7 +716,7 @@ func (x *CancelWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*CancelWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{14}
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CancelWorkflowRequest) GetWorkflowId() string {
@@ -948,7 +735,7 @@ type CancelWorkflowResponse struct {
 
 func (x *CancelWorkflowResponse) Reset() {
 	*x = CancelWorkflowResponse{}
-	mi := &file_api_proto_workflow_proto_msgTypes[15]
+	mi := &file_api_proto_workflow_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -960,7 +747,7 @@ func (x *CancelWorkflowResponse) String() string {
 func (*CancelWorkflowResponse) ProtoMessage() {}
 
 func (x *CancelWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_workflow_proto_msgTypes[15]
+	mi := &file_api_proto_workflow_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -973,7 +760,7 @@ func (x *CancelWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*CancelWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{15}
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CancelWorkflowResponse) GetSuccess() bool {
@@ -992,7 +779,7 @@ type StreamWorkflowHistoryRequest struct {
 
 func (x *StreamWorkflowHistoryRequest) Reset() {
 	*x = StreamWorkflowHistoryRequest{}
-	mi := &file_api_proto_workflow_proto_msgTypes[16]
+	mi := &file_api_proto_workflow_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +791,7 @@ func (x *StreamWorkflowHistoryRequest) String() string {
 func (*StreamWorkflowHistoryRequest) ProtoMessage() {}
 
 func (x *StreamWorkflowHistoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_workflow_proto_msgTypes[16]
+	mi := &file_api_proto_workflow_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +804,7 @@ func (x *StreamWorkflowHistoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamWorkflowHistoryRequest.ProtoReflect.Descriptor instead.
 func (*StreamWorkflowHistoryRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_workflow_proto_rawDescGZIP(), []int{16}
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *StreamWorkflowHistoryRequest) GetWorkflowId() string {
@@ -1031,9 +818,10 @@ var File_api_proto_workflow_proto protoreflect.FileDescriptor
 
 const file_api_proto_workflow_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"-\n" +
+	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"C\n" +
 	"\x17RegisterWorkflowRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"y\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05steps\x18\x02 \x03(\tR\x05steps\"y\n" +
 	"\x18RegisterWorkflowResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
@@ -1060,32 +848,22 @@ const file_api_proto_workflow_proto_rawDesc = "" +
 	"\n" +
 	"event_type\x18\x02 \x01(\tR\teventType\x12#\n" +
 	"\ractivity_name\x18\x03 \x01(\tR\factivityName\x12\x16\n" +
-	"\x06result\x18\x04 \x01(\fR\x06result\"\xdb\x01\n" +
+	"\x06result\x18\x04 \x01(\fR\x06result\"\xb4\x01\n" +
 	"\x12StreamTaskResponse\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1f\n" +
 	"\vworkflow_id\x18\x02 \x01(\tR\n" +
 	"workflowId\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x14\n" +
-	"\x05input\x18\x04 \x01(\fR\x05input\x12/\n" +
-	"\ttask_type\x18\x05 \x01(\x0e2\x12.workflow.TaskTypeR\btaskType\x120\n" +
-	"\ahistory\x18\x06 \x03(\v2\x16.workflow.HistoryEventR\ahistory\"y\n" +
+	"\x05input\x18\x04 \x01(\fR\x05input\x12\x1b\n" +
+	"\tstep_name\x18\x05 \x01(\tR\bstepName\x12\x1d\n" +
+	"\n" +
+	"step_index\x18\x06 \x01(\x05R\tstepIndex\"y\n" +
 	"\x13CompleteTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12\x16\n" +
 	"\x06result\x18\x03 \x01(\fR\x06result\x12\x14\n" +
 	"\x05error\x18\x04 \x01(\tR\x05error\"0\n" +
 	"\x14CompleteTaskResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"T\n" +
-	"\x17ScheduleActivityCommand\x12#\n" +
-	"\ractivity_name\x18\x01 \x01(\tR\factivityName\x12\x14\n" +
-	"\x05input\x18\x02 \x01(\fR\x05input\"\xf2\x01\n" +
-	"#RespondWorkflowTaskCompletedRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1b\n" +
-	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12=\n" +
-	"\bcommands\x18\x03 \x03(\v2!.workflow.ScheduleActivityCommandR\bcommands\x12-\n" +
-	"\x12workflow_completed\x18\x04 \x01(\bR\x11workflowCompleted\x12'\n" +
-	"\x0fworkflow_result\x18\x05 \x01(\fR\x0eworkflowResult\"@\n" +
-	"$RespondWorkflowTaskCompletedResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\";\n" +
 	"\x18GetWorkflowResultRequest\x12\x1f\n" +
 	"\vworkflow_id\x18\x01 \x01(\tR\n" +
@@ -1101,17 +879,12 @@ const file_api_proto_workflow_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"?\n" +
 	"\x1cStreamWorkflowHistoryRequest\x12\x1f\n" +
 	"\vworkflow_id\x18\x01 \x01(\tR\n" +
-	"workflowId*U\n" +
-	"\bTaskType\x12\x19\n" +
-	"\x15TASK_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
-	"\x12TASK_TYPE_WORKFLOW\x10\x01\x12\x16\n" +
-	"\x12TASK_TYPE_ACTIVITY\x10\x022\xe7\x05\n" +
+	"workflowId2\xe8\x04\n" +
 	"\x0fWorkflowService\x12Y\n" +
 	"\x10RegisterWorkflow\x12!.workflow.RegisterWorkflowRequest\x1a\".workflow.RegisterWorkflowResponse\x12P\n" +
 	"\rStartWorkflow\x12\x1e.workflow.StartWorkflowRequest\x1a\x1f.workflow.StartWorkflowResponse\x12K\n" +
 	"\vStreamTasks\x12\x1c.workflow.StreamTasksRequest\x1a\x1c.workflow.StreamTaskResponse0\x01\x12M\n" +
-	"\fCompleteTask\x12\x1d.workflow.CompleteTaskRequest\x1a\x1e.workflow.CompleteTaskResponse\x12}\n" +
-	"\x1cRespondWorkflowTaskCompleted\x12-.workflow.RespondWorkflowTaskCompletedRequest\x1a..workflow.RespondWorkflowTaskCompletedResponse\x12\\\n" +
+	"\fCompleteTask\x12\x1d.workflow.CompleteTaskRequest\x1a\x1e.workflow.CompleteTaskResponse\x12\\\n" +
 	"\x11GetWorkflowResult\x12\".workflow.GetWorkflowResultRequest\x1a#.workflow.GetWorkflowResultResponse\x12S\n" +
 	"\x0eCancelWorkflow\x12\x1f.workflow.CancelWorkflowRequest\x1a .workflow.CancelWorkflowResponse\x12Y\n" +
 	"\x15StreamWorkflowHistory\x12&.workflow.StreamWorkflowHistoryRequest\x1a\x16.workflow.HistoryEvent0\x01B8Z6github.com/yadukrishnan2004/antflow-server/api/grpc/pbb\x06proto3"
@@ -1128,55 +901,45 @@ func file_api_proto_workflow_proto_rawDescGZIP() []byte {
 	return file_api_proto_workflow_proto_rawDescData
 }
 
-var file_api_proto_workflow_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_proto_workflow_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_api_proto_workflow_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_api_proto_workflow_proto_goTypes = []any{
-	(TaskType)(0),                                // 0: workflow.TaskType
-	(*RegisterWorkflowRequest)(nil),              // 1: workflow.RegisterWorkflowRequest
-	(*RegisterWorkflowResponse)(nil),             // 2: workflow.RegisterWorkflowResponse
-	(*StartWorkflowRequest)(nil),                 // 3: workflow.StartWorkflowRequest
-	(*StartWorkflowResponse)(nil),                // 4: workflow.StartWorkflowResponse
-	(*StreamTasksRequest)(nil),                   // 5: workflow.StreamTasksRequest
-	(*HistoryEvent)(nil),                         // 6: workflow.HistoryEvent
-	(*StreamTaskResponse)(nil),                   // 7: workflow.StreamTaskResponse
-	(*CompleteTaskRequest)(nil),                  // 8: workflow.CompleteTaskRequest
-	(*CompleteTaskResponse)(nil),                 // 9: workflow.CompleteTaskResponse
-	(*ScheduleActivityCommand)(nil),              // 10: workflow.ScheduleActivityCommand
-	(*RespondWorkflowTaskCompletedRequest)(nil),  // 11: workflow.RespondWorkflowTaskCompletedRequest
-	(*RespondWorkflowTaskCompletedResponse)(nil), // 12: workflow.RespondWorkflowTaskCompletedResponse
-	(*GetWorkflowResultRequest)(nil),             // 13: workflow.GetWorkflowResultRequest
-	(*GetWorkflowResultResponse)(nil),            // 14: workflow.GetWorkflowResultResponse
-	(*CancelWorkflowRequest)(nil),                // 15: workflow.CancelWorkflowRequest
-	(*CancelWorkflowResponse)(nil),               // 16: workflow.CancelWorkflowResponse
-	(*StreamWorkflowHistoryRequest)(nil),         // 17: workflow.StreamWorkflowHistoryRequest
-	(*timestamppb.Timestamp)(nil),                // 18: google.protobuf.Timestamp
+	(*RegisterWorkflowRequest)(nil),      // 0: workflow.RegisterWorkflowRequest
+	(*RegisterWorkflowResponse)(nil),     // 1: workflow.RegisterWorkflowResponse
+	(*StartWorkflowRequest)(nil),         // 2: workflow.StartWorkflowRequest
+	(*StartWorkflowResponse)(nil),        // 3: workflow.StartWorkflowResponse
+	(*StreamTasksRequest)(nil),           // 4: workflow.StreamTasksRequest
+	(*HistoryEvent)(nil),                 // 5: workflow.HistoryEvent
+	(*StreamTaskResponse)(nil),           // 6: workflow.StreamTaskResponse
+	(*CompleteTaskRequest)(nil),          // 7: workflow.CompleteTaskRequest
+	(*CompleteTaskResponse)(nil),         // 8: workflow.CompleteTaskResponse
+	(*GetWorkflowResultRequest)(nil),     // 9: workflow.GetWorkflowResultRequest
+	(*GetWorkflowResultResponse)(nil),    // 10: workflow.GetWorkflowResultResponse
+	(*CancelWorkflowRequest)(nil),        // 11: workflow.CancelWorkflowRequest
+	(*CancelWorkflowResponse)(nil),       // 12: workflow.CancelWorkflowResponse
+	(*StreamWorkflowHistoryRequest)(nil), // 13: workflow.StreamWorkflowHistoryRequest
+	(*timestamppb.Timestamp)(nil),        // 14: google.protobuf.Timestamp
 }
 var file_api_proto_workflow_proto_depIdxs = []int32{
-	18, // 0: workflow.RegisterWorkflowResponse.created_at:type_name -> google.protobuf.Timestamp
-	0,  // 1: workflow.StreamTaskResponse.task_type:type_name -> workflow.TaskType
-	6,  // 2: workflow.StreamTaskResponse.history:type_name -> workflow.HistoryEvent
-	10, // 3: workflow.RespondWorkflowTaskCompletedRequest.commands:type_name -> workflow.ScheduleActivityCommand
-	1,  // 4: workflow.WorkflowService.RegisterWorkflow:input_type -> workflow.RegisterWorkflowRequest
-	3,  // 5: workflow.WorkflowService.StartWorkflow:input_type -> workflow.StartWorkflowRequest
-	5,  // 6: workflow.WorkflowService.StreamTasks:input_type -> workflow.StreamTasksRequest
-	8,  // 7: workflow.WorkflowService.CompleteTask:input_type -> workflow.CompleteTaskRequest
-	11, // 8: workflow.WorkflowService.RespondWorkflowTaskCompleted:input_type -> workflow.RespondWorkflowTaskCompletedRequest
-	13, // 9: workflow.WorkflowService.GetWorkflowResult:input_type -> workflow.GetWorkflowResultRequest
-	15, // 10: workflow.WorkflowService.CancelWorkflow:input_type -> workflow.CancelWorkflowRequest
-	17, // 11: workflow.WorkflowService.StreamWorkflowHistory:input_type -> workflow.StreamWorkflowHistoryRequest
-	2,  // 12: workflow.WorkflowService.RegisterWorkflow:output_type -> workflow.RegisterWorkflowResponse
-	4,  // 13: workflow.WorkflowService.StartWorkflow:output_type -> workflow.StartWorkflowResponse
-	7,  // 14: workflow.WorkflowService.StreamTasks:output_type -> workflow.StreamTaskResponse
-	9,  // 15: workflow.WorkflowService.CompleteTask:output_type -> workflow.CompleteTaskResponse
-	12, // 16: workflow.WorkflowService.RespondWorkflowTaskCompleted:output_type -> workflow.RespondWorkflowTaskCompletedResponse
-	14, // 17: workflow.WorkflowService.GetWorkflowResult:output_type -> workflow.GetWorkflowResultResponse
-	16, // 18: workflow.WorkflowService.CancelWorkflow:output_type -> workflow.CancelWorkflowResponse
-	6,  // 19: workflow.WorkflowService.StreamWorkflowHistory:output_type -> workflow.HistoryEvent
-	12, // [12:20] is the sub-list for method output_type
-	4,  // [4:12] is the sub-list for method input_type
-	4,  // [4:4] is the sub-list for extension type_name
-	4,  // [4:4] is the sub-list for extension extendee
-	0,  // [0:4] is the sub-list for field type_name
+	14, // 0: workflow.RegisterWorkflowResponse.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 1: workflow.WorkflowService.RegisterWorkflow:input_type -> workflow.RegisterWorkflowRequest
+	2,  // 2: workflow.WorkflowService.StartWorkflow:input_type -> workflow.StartWorkflowRequest
+	4,  // 3: workflow.WorkflowService.StreamTasks:input_type -> workflow.StreamTasksRequest
+	7,  // 4: workflow.WorkflowService.CompleteTask:input_type -> workflow.CompleteTaskRequest
+	9,  // 5: workflow.WorkflowService.GetWorkflowResult:input_type -> workflow.GetWorkflowResultRequest
+	11, // 6: workflow.WorkflowService.CancelWorkflow:input_type -> workflow.CancelWorkflowRequest
+	13, // 7: workflow.WorkflowService.StreamWorkflowHistory:input_type -> workflow.StreamWorkflowHistoryRequest
+	1,  // 8: workflow.WorkflowService.RegisterWorkflow:output_type -> workflow.RegisterWorkflowResponse
+	3,  // 9: workflow.WorkflowService.StartWorkflow:output_type -> workflow.StartWorkflowResponse
+	6,  // 10: workflow.WorkflowService.StreamTasks:output_type -> workflow.StreamTaskResponse
+	8,  // 11: workflow.WorkflowService.CompleteTask:output_type -> workflow.CompleteTaskResponse
+	10, // 12: workflow.WorkflowService.GetWorkflowResult:output_type -> workflow.GetWorkflowResultResponse
+	12, // 13: workflow.WorkflowService.CancelWorkflow:output_type -> workflow.CancelWorkflowResponse
+	5,  // 14: workflow.WorkflowService.StreamWorkflowHistory:output_type -> workflow.HistoryEvent
+	8,  // [8:15] is the sub-list for method output_type
+	1,  // [1:8] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_workflow_proto_init() }
@@ -1189,14 +952,13 @@ func file_api_proto_workflow_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_workflow_proto_rawDesc), len(file_api_proto_workflow_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   17,
+			NumEnums:      0,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_api_proto_workflow_proto_goTypes,
 		DependencyIndexes: file_api_proto_workflow_proto_depIdxs,
-		EnumInfos:         file_api_proto_workflow_proto_enumTypes,
 		MessageInfos:      file_api_proto_workflow_proto_msgTypes,
 	}.Build()
 	File_api_proto_workflow_proto = out.File

@@ -30,16 +30,19 @@ type WorkflowDefinition struct {
 
 // Task is a single unit of work within a workflow.
 type Task struct {
-	ID          string
-	WorkflowExecutionID  string
-	Name        string
-	Input       []byte
-	Output      []byte
-	State       string
-	Error       string
-	ScheduledAt time.Time
-	CompletedAt time.Time
-	LockedUntil time.Time
+	ID                  string
+	WorkflowExecutionID string
+	TaskQueue           string
+	Name                string
+	StepName            string
+	StepIndex           int
+	Input               []byte
+	Output              []byte
+	State               string
+	Error               string
+	ScheduledAt         time.Time
+	CompletedAt         time.Time
+	LockedUntil         time.Time
 }
 
 // PostgresWorkflowRepository implements workflow.WorkflowRepository.
@@ -96,6 +99,14 @@ func (s *PostgresWorkflowRepository) Migrate() error {
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
+		CREATE TABLE IF NOT EXISTS workflow_definition_step (
+			workflow_name TEXT NOT NULL,
+			step_index    INT NOT NULL,
+			step_name     TEXT NOT NULL,
+			PRIMARY KEY (workflow_name, step_index),
+			FOREIGN KEY (workflow_name) REFERENCES workflow_definition(name) ON DELETE CASCADE
+		);
+
 		CREATE TABLE IF NOT EXISTS workflow_execution (
 			id         TEXT PRIMARY KEY,
 			name       TEXT NOT NULL,
@@ -115,7 +126,13 @@ func (s *PostgresWorkflowRepository) Migrate() error {
 }
 
 func (s *PostgresWorkflowRepository) SaveDefinition(def *workflow.WorkflowDefinition) error {
-	_, err := s.db.Exec(`
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
 		INSERT INTO workflow_definition (name, created_at)
 		VALUES ($1, $2)
 		ON CONFLICT (name) DO NOTHING
@@ -124,7 +141,19 @@ func (s *PostgresWorkflowRepository) SaveDefinition(def *workflow.WorkflowDefini
 	if err != nil {
 		return fmt.Errorf("repo: failed to save workflow definition: %w", err)
 	}
-	return nil
+
+	for i, step := range def.Steps {
+		_, err = tx.Exec(`
+			INSERT INTO workflow_definition_step (workflow_name, step_index, step_name)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (workflow_name, step_index) DO NOTHING
+		`, def.Name, i, step)
+		if err != nil {
+			return fmt.Errorf("repo: failed to save definition step: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (s *PostgresWorkflowRepository) FindDefinitionByName(name string) (*workflow.WorkflowDefinition, error) {
@@ -143,6 +172,25 @@ func (s *PostgresWorkflowRepository) FindDefinitionByName(name string) (*workflo
 			return nil, fmt.Errorf("repo: workflow definition not found")
 		}
 		return nil, fmt.Errorf("repo: failed to find definition: %w", err)
+	}
+
+	rows, err := s.db.Query(`
+		SELECT step_name
+		FROM workflow_definition_step
+		WHERE workflow_name = $1
+		ORDER BY step_index ASC
+	`, name)
+	if err != nil {
+		return nil, fmt.Errorf("repo: failed to find steps: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var stepName string
+		if err := rows.Scan(&stepName); err != nil {
+			return nil, err
+		}
+		d.Steps = append(d.Steps, stepName)
 	}
 
 	return &d, nil
@@ -236,11 +284,11 @@ func (s *PostgresTaskRepository) Migrate() error {
 			workflow_execution_id TEXT NOT NULL,
 			task_queue    TEXT NOT NULL,
 			name          TEXT NOT NULL,
-			task_type     TEXT NOT NULL,
+			step_name     TEXT NOT NULL,
+			step_index    INT NOT NULL,
 
 			input         BYTEA NOT NULL,
 			output        BYTEA,
-
 			state         TEXT NOT NULL,
 			error         TEXT,
 
@@ -260,14 +308,15 @@ func (s *PostgresTaskRepository) Migrate() error {
 // SaveTask inserts a new task row.
 func (s *PostgresTaskRepository) SaveTask(task *workflow.Task) error {
 	_, err := s.db.Exec(`
-		INSERT INTO task (id, workflow_execution_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO task (id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`,
 		task.ID,
 		task.WorkflowExecutionID,
 		task.TaskQueue,
 		task.Name,
-		string(task.TaskType),
+		task.StepName,
+		task.StepIndex,
 		task.Input,
 		nullableBytes(task.Output),
 		string(task.State),
@@ -287,7 +336,7 @@ func (s *PostgresTaskRepository) SaveTask(task *workflow.Task) error {
 // "pending" state.
 func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([]workflow.Task, error) {
 	rows, err := s.db.Query(`
-		SELECT id, workflow_execution_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at
 		FROM task
 		WHERE workflow_execution_id = $1
 		  AND state = 'CREATED'
@@ -301,10 +350,7 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([
 	var tasks []workflow.Task
 	for rows.Next() {
 		var t workflow.Task
-		var output []byte
-		var input []byte
 		var state string
-		var taskType string
 		var taskErr sql.NullString
 		var completedAt sql.NullTime
 
@@ -313,9 +359,10 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([
 			&t.WorkflowExecutionID,
 			&t.TaskQueue,
 			&t.Name,
-			&taskType,
-			&input,
-			&output,
+			&t.StepName,
+			&t.StepIndex,
+			&t.Input,
+			&t.Output,
 			&state,
 			&taskErr,
 			&t.ScheduledAt,
@@ -324,10 +371,7 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([
 			return nil, fmt.Errorf("repo: failed to scan task row: %w", err)
 		}
 
-		t.Input = input
-		t.Output = output
 		t.State = workflow.State(state)
-		t.TaskType = workflow.TaskType(taskType)
 		if taskErr.Valid {
 			t.Error = taskErr.String
 		}
@@ -369,7 +413,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	defer tx.Rollback()
 
 	row := tx.QueryRow(`
-		SELECT id, workflow_execution_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at
 		FROM task
 		WHERE task_queue = $1 AND state = 'CREATED' AND (locked_until IS NULL OR locked_until < NOW())
 		ORDER BY scheduled_at ASC
@@ -378,10 +422,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	`, taskQueue)
 
 	var t workflow.Task
-	var output []byte
-	var input []byte
 	var state string
-	var taskType string
 	var taskErr sql.NullString
 	var completedAt sql.NullTime
 
@@ -390,9 +431,10 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 		&t.WorkflowExecutionID,
 		&t.TaskQueue,
 		&t.Name,
-		&taskType,
-		&input,
-		&output,
+		&t.StepName,
+		&t.StepIndex,
+		&t.Input,
+		&t.Output,
 		&state,
 		&taskErr,
 		&t.ScheduledAt,
@@ -404,10 +446,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 		return nil, fmt.Errorf("repo: failed to lock task: %w", err)
 	}
 
-	t.Input = input
-	t.Output = output
 	t.State = workflow.StateRunning
-	t.TaskType = workflow.TaskType(taskType)
 	if taskErr.Valid {
 		t.Error = taskErr.String
 	}
@@ -454,7 +493,7 @@ func (s *PostgresTaskRepository) UpdateTaskComplete(taskID string, result []byte
 // FindLatestTask finds the most recently scheduled task for a workflow.
 func (s *PostgresTaskRepository) FindLatestTask(workflowExecutionID string) (*workflow.Task, error) {
 	row := s.db.QueryRow(`
-		SELECT id, workflow_execution_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at
 		FROM task
 		WHERE workflow_execution_id = $1
 		ORDER BY scheduled_at DESC
@@ -462,10 +501,7 @@ func (s *PostgresTaskRepository) FindLatestTask(workflowExecutionID string) (*wo
 	`, workflowExecutionID)
 
 	var t workflow.Task
-	var output []byte
-	var input []byte
 	var state string
-	var taskType string
 	var taskErr sql.NullString
 	var completedAt sql.NullTime
 
@@ -474,9 +510,10 @@ func (s *PostgresTaskRepository) FindLatestTask(workflowExecutionID string) (*wo
 		&t.WorkflowExecutionID,
 		&t.TaskQueue,
 		&t.Name,
-		&taskType,
-		&input,
-		&output,
+		&t.StepName,
+		&t.StepIndex,
+		&t.Input,
+		&t.Output,
 		&state,
 		&taskErr,
 		&t.ScheduledAt,
@@ -488,10 +525,7 @@ func (s *PostgresTaskRepository) FindLatestTask(workflowExecutionID string) (*wo
 		return nil, fmt.Errorf("repo: failed to find latest task: %w", err)
 	}
 
-	t.Input = input
-	t.Output = output
 	t.State = workflow.State(state)
-	t.TaskType = workflow.TaskType(taskType)
 	if taskErr.Valid {
 		t.Error = taskErr.String
 	}

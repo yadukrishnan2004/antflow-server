@@ -83,6 +83,8 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 					TaskId:     task.ID,
 					WorkflowId: task.WorkflowExecutionID,
 					Name:       task.Name,
+					StepName:   task.StepName,
+					StepIndex:  int32(task.StepIndex),
 					Input:      task.Input,
 				})
 				if err != nil {
@@ -107,11 +109,6 @@ func (h *WorkflowHandler) CompleteTask(ctx context.Context, req *pb.CompleteTask
 	}
 
 	return &pb.CompleteTaskResponse{Success: true}, nil
-}
-
-func (h *WorkflowHandler) RespondWorkflowTaskCompleted(ctx context.Context, req *pb.RespondWorkflowTaskCompletedRequest) (*pb.RespondWorkflowTaskCompletedResponse, error) {
-	// Not implemented yet
-	return nil, status.Error(codes.Unimplemented, "method RespondWorkflowTaskCompleted not implemented")
 }
 
 func (h *WorkflowHandler) GetWorkflowResult(ctx context.Context, req *pb.GetWorkflowResultRequest) (*pb.GetWorkflowResultResponse, error) {
