@@ -895,6 +895,138 @@ func (x *GetWorkflowResultResponse) GetError() string {
 	return ""
 }
 
+type CancelWorkflowRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"` // Maps to workflow execution ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelWorkflowRequest) Reset() {
+	*x = CancelWorkflowRequest{}
+	mi := &file_api_proto_workflow_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelWorkflowRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelWorkflowRequest) ProtoMessage() {}
+
+func (x *CancelWorkflowRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelWorkflowRequest.ProtoReflect.Descriptor instead.
+func (*CancelWorkflowRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CancelWorkflowRequest) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+type CancelWorkflowResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelWorkflowResponse) Reset() {
+	*x = CancelWorkflowResponse{}
+	mi := &file_api_proto_workflow_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelWorkflowResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelWorkflowResponse) ProtoMessage() {}
+
+func (x *CancelWorkflowResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelWorkflowResponse.ProtoReflect.Descriptor instead.
+func (*CancelWorkflowResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *CancelWorkflowResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+type StreamWorkflowHistoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"` // Maps to workflow execution ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamWorkflowHistoryRequest) Reset() {
+	*x = StreamWorkflowHistoryRequest{}
+	mi := &file_api_proto_workflow_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamWorkflowHistoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamWorkflowHistoryRequest) ProtoMessage() {}
+
+func (x *StreamWorkflowHistoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamWorkflowHistoryRequest.ProtoReflect.Descriptor instead.
+func (*StreamWorkflowHistoryRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *StreamWorkflowHistoryRequest) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
 var File_api_proto_workflow_proto protoreflect.FileDescriptor
 
 const file_api_proto_workflow_proto_rawDesc = "" +
@@ -961,18 +1093,28 @@ const file_api_proto_workflow_proto_rawDesc = "" +
 	"\x19GetWorkflowResultResponse\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
 	"\x06result\x18\x02 \x01(\fR\x06result\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error*U\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"8\n" +
+	"\x15CancelWorkflowRequest\x12\x1f\n" +
+	"\vworkflow_id\x18\x01 \x01(\tR\n" +
+	"workflowId\"2\n" +
+	"\x16CancelWorkflowResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"?\n" +
+	"\x1cStreamWorkflowHistoryRequest\x12\x1f\n" +
+	"\vworkflow_id\x18\x01 \x01(\tR\n" +
+	"workflowId*U\n" +
 	"\bTaskType\x12\x19\n" +
 	"\x15TASK_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12TASK_TYPE_WORKFLOW\x10\x01\x12\x16\n" +
-	"\x12TASK_TYPE_ACTIVITY\x10\x022\xb7\x04\n" +
+	"\x12TASK_TYPE_ACTIVITY\x10\x022\xe7\x05\n" +
 	"\x0fWorkflowService\x12Y\n" +
 	"\x10RegisterWorkflow\x12!.workflow.RegisterWorkflowRequest\x1a\".workflow.RegisterWorkflowResponse\x12P\n" +
 	"\rStartWorkflow\x12\x1e.workflow.StartWorkflowRequest\x1a\x1f.workflow.StartWorkflowResponse\x12K\n" +
 	"\vStreamTasks\x12\x1c.workflow.StreamTasksRequest\x1a\x1c.workflow.StreamTaskResponse0\x01\x12M\n" +
 	"\fCompleteTask\x12\x1d.workflow.CompleteTaskRequest\x1a\x1e.workflow.CompleteTaskResponse\x12}\n" +
 	"\x1cRespondWorkflowTaskCompleted\x12-.workflow.RespondWorkflowTaskCompletedRequest\x1a..workflow.RespondWorkflowTaskCompletedResponse\x12\\\n" +
-	"\x11GetWorkflowResult\x12\".workflow.GetWorkflowResultRequest\x1a#.workflow.GetWorkflowResultResponseB8Z6github.com/yadukrishnan2004/antflow-server/api/grpc/pbb\x06proto3"
+	"\x11GetWorkflowResult\x12\".workflow.GetWorkflowResultRequest\x1a#.workflow.GetWorkflowResultResponse\x12S\n" +
+	"\x0eCancelWorkflow\x12\x1f.workflow.CancelWorkflowRequest\x1a .workflow.CancelWorkflowResponse\x12Y\n" +
+	"\x15StreamWorkflowHistory\x12&.workflow.StreamWorkflowHistoryRequest\x1a\x16.workflow.HistoryEvent0\x01B8Z6github.com/yadukrishnan2004/antflow-server/api/grpc/pbb\x06proto3"
 
 var (
 	file_api_proto_workflow_proto_rawDescOnce sync.Once
@@ -987,7 +1129,7 @@ func file_api_proto_workflow_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_workflow_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_proto_workflow_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_api_proto_workflow_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_api_proto_workflow_proto_goTypes = []any{
 	(TaskType)(0),                                // 0: workflow.TaskType
 	(*RegisterWorkflowRequest)(nil),              // 1: workflow.RegisterWorkflowRequest
@@ -1004,10 +1146,13 @@ var file_api_proto_workflow_proto_goTypes = []any{
 	(*RespondWorkflowTaskCompletedResponse)(nil), // 12: workflow.RespondWorkflowTaskCompletedResponse
 	(*GetWorkflowResultRequest)(nil),             // 13: workflow.GetWorkflowResultRequest
 	(*GetWorkflowResultResponse)(nil),            // 14: workflow.GetWorkflowResultResponse
-	(*timestamppb.Timestamp)(nil),                // 15: google.protobuf.Timestamp
+	(*CancelWorkflowRequest)(nil),                // 15: workflow.CancelWorkflowRequest
+	(*CancelWorkflowResponse)(nil),               // 16: workflow.CancelWorkflowResponse
+	(*StreamWorkflowHistoryRequest)(nil),         // 17: workflow.StreamWorkflowHistoryRequest
+	(*timestamppb.Timestamp)(nil),                // 18: google.protobuf.Timestamp
 }
 var file_api_proto_workflow_proto_depIdxs = []int32{
-	15, // 0: workflow.RegisterWorkflowResponse.created_at:type_name -> google.protobuf.Timestamp
+	18, // 0: workflow.RegisterWorkflowResponse.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: workflow.StreamTaskResponse.task_type:type_name -> workflow.TaskType
 	6,  // 2: workflow.StreamTaskResponse.history:type_name -> workflow.HistoryEvent
 	10, // 3: workflow.RespondWorkflowTaskCompletedRequest.commands:type_name -> workflow.ScheduleActivityCommand
@@ -1017,14 +1162,18 @@ var file_api_proto_workflow_proto_depIdxs = []int32{
 	8,  // 7: workflow.WorkflowService.CompleteTask:input_type -> workflow.CompleteTaskRequest
 	11, // 8: workflow.WorkflowService.RespondWorkflowTaskCompleted:input_type -> workflow.RespondWorkflowTaskCompletedRequest
 	13, // 9: workflow.WorkflowService.GetWorkflowResult:input_type -> workflow.GetWorkflowResultRequest
-	2,  // 10: workflow.WorkflowService.RegisterWorkflow:output_type -> workflow.RegisterWorkflowResponse
-	4,  // 11: workflow.WorkflowService.StartWorkflow:output_type -> workflow.StartWorkflowResponse
-	7,  // 12: workflow.WorkflowService.StreamTasks:output_type -> workflow.StreamTaskResponse
-	9,  // 13: workflow.WorkflowService.CompleteTask:output_type -> workflow.CompleteTaskResponse
-	12, // 14: workflow.WorkflowService.RespondWorkflowTaskCompleted:output_type -> workflow.RespondWorkflowTaskCompletedResponse
-	14, // 15: workflow.WorkflowService.GetWorkflowResult:output_type -> workflow.GetWorkflowResultResponse
-	10, // [10:16] is the sub-list for method output_type
-	4,  // [4:10] is the sub-list for method input_type
+	15, // 10: workflow.WorkflowService.CancelWorkflow:input_type -> workflow.CancelWorkflowRequest
+	17, // 11: workflow.WorkflowService.StreamWorkflowHistory:input_type -> workflow.StreamWorkflowHistoryRequest
+	2,  // 12: workflow.WorkflowService.RegisterWorkflow:output_type -> workflow.RegisterWorkflowResponse
+	4,  // 13: workflow.WorkflowService.StartWorkflow:output_type -> workflow.StartWorkflowResponse
+	7,  // 14: workflow.WorkflowService.StreamTasks:output_type -> workflow.StreamTaskResponse
+	9,  // 15: workflow.WorkflowService.CompleteTask:output_type -> workflow.CompleteTaskResponse
+	12, // 16: workflow.WorkflowService.RespondWorkflowTaskCompleted:output_type -> workflow.RespondWorkflowTaskCompletedResponse
+	14, // 17: workflow.WorkflowService.GetWorkflowResult:output_type -> workflow.GetWorkflowResultResponse
+	16, // 18: workflow.WorkflowService.CancelWorkflow:output_type -> workflow.CancelWorkflowResponse
+	6,  // 19: workflow.WorkflowService.StreamWorkflowHistory:output_type -> workflow.HistoryEvent
+	12, // [12:20] is the sub-list for method output_type
+	4,  // [4:12] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -1041,7 +1190,7 @@ func file_api_proto_workflow_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_workflow_proto_rawDesc), len(file_api_proto_workflow_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   14,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

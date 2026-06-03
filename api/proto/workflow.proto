@@ -13,6 +13,8 @@ service WorkflowService {
   rpc CompleteTask (CompleteTaskRequest) returns (CompleteTaskResponse);
   rpc RespondWorkflowTaskCompleted (RespondWorkflowTaskCompletedRequest) returns (RespondWorkflowTaskCompletedResponse);
   rpc GetWorkflowResult (GetWorkflowResultRequest) returns (GetWorkflowResultResponse);
+  rpc CancelWorkflow (CancelWorkflowRequest) returns (CancelWorkflowResponse);
+  rpc StreamWorkflowHistory (StreamWorkflowHistoryRequest) returns (stream HistoryEvent);
 }
 
 enum TaskType {
@@ -101,4 +103,16 @@ message GetWorkflowResultResponse {
   string state = 1;
   bytes result = 2;
   string error = 3;
+}
+
+message CancelWorkflowRequest {
+  string workflow_id = 1; // Maps to workflow execution ID
+}
+
+message CancelWorkflowResponse {
+  bool success = 1;
+}
+
+message StreamWorkflowHistoryRequest {
+  string workflow_id = 1; // Maps to workflow execution ID
 }

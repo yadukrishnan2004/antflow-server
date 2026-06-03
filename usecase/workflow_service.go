@@ -10,11 +10,13 @@ import (
 )
 
 type WorkflowService interface {
-	RegisterWorkflow(name string) (*workflow.Workflow, error)
-	StartWorkflow(workflowID string, taskQueue string, input []byte) (*workflow.Task, error)
+	RegisterWorkflow(name string) (*workflow.WorkflowDefinition, error)
+	StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.Task, error)
 	PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error)
 	CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error
 	GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.Task, error)
+	CancelWorkflow(ctx context.Context, workflowID string) error
+	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)
 }
 
 type workflowInteractor struct {
@@ -31,46 +33,47 @@ func NewWorkflowService(wRepo workflow.WorkflowRepository, tRepo workflow.TaskRe
 	}
 }
 
-func (i *workflowInteractor) RegisterWorkflow(name string) (*workflow.Workflow, error) {
-	w := &workflow.Workflow{
-		ID:        fmt.Sprintf("wf-%s", uuid.New().String()),
+func (i *workflowInteractor) RegisterWorkflow(name string) (*workflow.WorkflowDefinition, error) {
+	def := &workflow.WorkflowDefinition{
 		Name:      name,
-		State:     workflow.StateCreated,
+		CreatedAt: time.Time{}, // Just placeholder, db sets it or we can set it
+	}
+
+	err := i.workflowRepo.SaveDefinition(def)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save workflow definition: %w", err)
+	}
+
+	return def, nil
+}
+
+func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.Task, error) {
+	// 1. Ensure definition exists
+	_, err := i.workflowRepo.FindDefinitionByName(workflowName)
+	if err != nil {
+		return nil, fmt.Errorf("workflow definition not found: %w", err)
+	}
+
+	// 2. Create Execution
+	exec := &workflow.WorkflowExecution{
+		ID:        fmt.Sprintf("run-%s", uuid.New().String()),
+		Name:      workflowName,
+		State:     workflow.StateRunning,
+		Input:     input,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
-	if err := i.workflowRepo.Save(w); err != nil {
-		return nil, fmt.Errorf("failed to register workflow: %w", err)
-	}
-
-	return w, nil
-}
-
-func (i *workflowInteractor) StartWorkflow(workflowID string, taskQueue string, input []byte) (*workflow.Task, error) {
-	w, err := i.workflowRepo.FindByID(workflowID)
+	err = i.workflowRepo.SaveExecution(exec)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find workflow: %w", err)
-	}
-	if w == nil {
-		return nil, fmt.Errorf("workflow not found: %s", workflowID)
-	}
-
-	if err := workflow.ValidateTransition(w.State, workflow.StateRunning); err != nil {
-		return nil, fmt.Errorf("cannot start workflow: %w", err)
-	}
-
-	w.State = workflow.StateRunning
-	w.UpdatedAt = time.Now()
-	if err := i.workflowRepo.UpdateState(w.ID, w.State); err != nil {
-		return nil, fmt.Errorf("failed to update workflow state: %w", err)
+		return nil, fmt.Errorf("failed to save workflow execution: %w", err)
 	}
 
 	t := &workflow.Task{
 		ID:          fmt.Sprintf("task-%s", uuid.New().String()),
-		WorkflowID:  w.ID,
-		TaskQueue:   taskQueue,
-		Name:        w.Name,
+		WorkflowExecutionID: exec.ID,
+		TaskQueue:           taskQueue,
+		Name:                workflowName,
 		Input:       input,
 		State:       workflow.StateCreated, // Should be pending or created. We map pending to "pending" in postgres_repository query for FindAndLockPendingTask.
 	}
@@ -92,4 +95,21 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 
 func (i *workflowInteractor) GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.Task, error) {
 	return i.taskRepo.FindLatestTask(workflowID)
+}
+
+func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID string) error {
+	exec, err := i.workflowRepo.FindExecutionByID(workflowID)
+	if err != nil {
+		return fmt.Errorf("failed to find execution: %w", err)
+	}
+
+	if exec.State == workflow.StateCompleted || exec.State == workflow.StateFailed || exec.State == workflow.StateCancelled {
+		return fmt.Errorf("cannot cancel workflow in terminal state: %s", exec.State)
+	}
+
+	return i.workflowRepo.UpdateExecutionState(workflowID, workflow.StateCancelled)
+}
+
+func (i *workflowInteractor) GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error) {
+	return i.historyRepo.GetHistory(workflowID)
 }

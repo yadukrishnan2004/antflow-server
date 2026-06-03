@@ -25,6 +25,8 @@ const (
 	WorkflowService_CompleteTask_FullMethodName                 = "/workflow.WorkflowService/CompleteTask"
 	WorkflowService_RespondWorkflowTaskCompleted_FullMethodName = "/workflow.WorkflowService/RespondWorkflowTaskCompleted"
 	WorkflowService_GetWorkflowResult_FullMethodName            = "/workflow.WorkflowService/GetWorkflowResult"
+	WorkflowService_CancelWorkflow_FullMethodName               = "/workflow.WorkflowService/CancelWorkflow"
+	WorkflowService_StreamWorkflowHistory_FullMethodName        = "/workflow.WorkflowService/StreamWorkflowHistory"
 )
 
 // WorkflowServiceClient is the client API for WorkflowService service.
@@ -37,6 +39,8 @@ type WorkflowServiceClient interface {
 	CompleteTask(ctx context.Context, in *CompleteTaskRequest, opts ...grpc.CallOption) (*CompleteTaskResponse, error)
 	RespondWorkflowTaskCompleted(ctx context.Context, in *RespondWorkflowTaskCompletedRequest, opts ...grpc.CallOption) (*RespondWorkflowTaskCompletedResponse, error)
 	GetWorkflowResult(ctx context.Context, in *GetWorkflowResultRequest, opts ...grpc.CallOption) (*GetWorkflowResultResponse, error)
+	CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error)
+	StreamWorkflowHistory(ctx context.Context, in *StreamWorkflowHistoryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HistoryEvent], error)
 }
 
 type workflowServiceClient struct {
@@ -116,6 +120,35 @@ func (c *workflowServiceClient) GetWorkflowResult(ctx context.Context, in *GetWo
 	return out, nil
 }
 
+func (c *workflowServiceClient) CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelWorkflowResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_CancelWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) StreamWorkflowHistory(ctx context.Context, in *StreamWorkflowHistoryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HistoryEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkflowService_ServiceDesc.Streams[1], WorkflowService_StreamWorkflowHistory_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamWorkflowHistoryRequest, HistoryEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkflowService_StreamWorkflowHistoryClient = grpc.ServerStreamingClient[HistoryEvent]
+
 // WorkflowServiceServer is the server API for WorkflowService service.
 // All implementations must embed UnimplementedWorkflowServiceServer
 // for forward compatibility.
@@ -126,6 +159,8 @@ type WorkflowServiceServer interface {
 	CompleteTask(context.Context, *CompleteTaskRequest) (*CompleteTaskResponse, error)
 	RespondWorkflowTaskCompleted(context.Context, *RespondWorkflowTaskCompletedRequest) (*RespondWorkflowTaskCompletedResponse, error)
 	GetWorkflowResult(context.Context, *GetWorkflowResultRequest) (*GetWorkflowResultResponse, error)
+	CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error)
+	StreamWorkflowHistory(*StreamWorkflowHistoryRequest, grpc.ServerStreamingServer[HistoryEvent]) error
 	mustEmbedUnimplementedWorkflowServiceServer()
 }
 
@@ -153,6 +188,12 @@ func (UnimplementedWorkflowServiceServer) RespondWorkflowTaskCompleted(context.C
 }
 func (UnimplementedWorkflowServiceServer) GetWorkflowResult(context.Context, *GetWorkflowResultRequest) (*GetWorkflowResultResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetWorkflowResult not implemented")
+}
+func (UnimplementedWorkflowServiceServer) CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelWorkflow not implemented")
+}
+func (UnimplementedWorkflowServiceServer) StreamWorkflowHistory(*StreamWorkflowHistoryRequest, grpc.ServerStreamingServer[HistoryEvent]) error {
+	return status.Error(codes.Unimplemented, "method StreamWorkflowHistory not implemented")
 }
 func (UnimplementedWorkflowServiceServer) mustEmbedUnimplementedWorkflowServiceServer() {}
 func (UnimplementedWorkflowServiceServer) testEmbeddedByValue()                         {}
@@ -276,6 +317,35 @@ func _WorkflowService_GetWorkflowResult_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkflowService_CancelWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).CancelWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_CancelWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).CancelWorkflow(ctx, req.(*CancelWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_StreamWorkflowHistory_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamWorkflowHistoryRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(WorkflowServiceServer).StreamWorkflowHistory(m, &grpc.GenericServerStream[StreamWorkflowHistoryRequest, HistoryEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkflowService_StreamWorkflowHistoryServer = grpc.ServerStreamingServer[HistoryEvent]
+
 // WorkflowService_ServiceDesc is the grpc.ServiceDesc for WorkflowService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -303,11 +373,20 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetWorkflowResult",
 			Handler:    _WorkflowService_GetWorkflowResult_Handler,
 		},
+		{
+			MethodName: "CancelWorkflow",
+			Handler:    _WorkflowService_CancelWorkflow_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "StreamTasks",
 			Handler:       _WorkflowService_StreamTasks_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamWorkflowHistory",
+			Handler:       _WorkflowService_StreamWorkflowHistory_Handler,
 			ServerStreams: true,
 		},
 	},

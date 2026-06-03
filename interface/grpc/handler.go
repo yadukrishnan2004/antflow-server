@@ -33,7 +33,7 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
 	}
 
 	return &pb.RegisterWorkflowResponse{
-		Id:        wf.ID,
+		Id:        wf.Name, // Using name as ID for definition
 		Name:      wf.Name,
 		CreatedAt: timestamppb.New(wf.CreatedAt),
 	}, nil
@@ -55,7 +55,7 @@ func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkfl
 
 	return &pb.StartWorkflowResponse{
 		Id:         task.ID,
-		WorkflowId: task.WorkflowID,
+		WorkflowId: task.WorkflowExecutionID,
 		Name:       task.Name,
 		State:      string(task.State),
 	}, nil
@@ -81,7 +81,7 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 				// We found a task, send it to the worker
 				err = stream.Send(&pb.StreamTaskResponse{
 					TaskId:     task.ID,
-					WorkflowId: task.WorkflowID,
+					WorkflowId: task.WorkflowExecutionID,
 					Name:       task.Name,
 					Input:      task.Input,
 				})
@@ -132,4 +132,63 @@ func (h *WorkflowHandler) GetWorkflowResult(ctx context.Context, req *pb.GetWork
 		Result: task.Output,
 		Error:  task.Error,
 	}, nil
+}
+
+func (h *WorkflowHandler) CancelWorkflow(ctx context.Context, req *pb.CancelWorkflowRequest) (*pb.CancelWorkflowResponse, error) {
+	if req.WorkflowId == "" {
+		return nil, status.Error(codes.InvalidArgument, "workflow id is required")
+	}
+
+	err := h.service.CancelWorkflow(ctx, req.WorkflowId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to cancel workflow: %v", err)
+	}
+
+	return &pb.CancelWorkflowResponse{Success: true}, nil
+}
+
+func (h *WorkflowHandler) StreamWorkflowHistory(req *pb.StreamWorkflowHistoryRequest, stream pb.WorkflowService_StreamWorkflowHistoryServer) error {
+	if req.WorkflowId == "" {
+		return status.Error(codes.InvalidArgument, "workflow id is required")
+	}
+
+	lastSentEventID := int64(-1)
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		default:
+			events, err := h.service.GetHistory(stream.Context(), req.WorkflowId)
+			if err != nil {
+				return status.Errorf(codes.Internal, "failed to get history: %v", err)
+			}
+
+			terminalReached := false
+			for _, event := range events {
+				if event.EventID > lastSentEventID {
+					err = stream.Send(&pb.HistoryEvent{
+						EventId:      event.EventID,
+						EventType:    event.EventType,
+						ActivityName: event.ActivityName,
+						Result:       event.Result,
+					})
+					if err != nil {
+						return err
+					}
+					lastSentEventID = event.EventID
+
+					if event.EventType == "WorkflowExecutionCompleted" || event.EventType == "WorkflowExecutionFailed" || event.EventType == "WorkflowExecutionCancelled" {
+						terminalReached = true
+					}
+				}
+			}
+
+			if terminalReached {
+				return nil // Close stream gracefully
+			}
+
+			time.Sleep(1 * time.Second)
+		}
+	}
 }

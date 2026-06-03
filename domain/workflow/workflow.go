@@ -2,11 +2,20 @@ package workflow
 
 import "time"
 
-//representing one workflow execution.
-type Workflow struct{
-	ID   string
-	Name string
-	State State
+// WorkflowDefinition represents a registered workflow type.
+type WorkflowDefinition struct {
+	Name      string
+	CreatedAt time.Time
+}
+
+// WorkflowExecution represents a single run of a workflow.
+type WorkflowExecution struct {
+	ID        string
+	Name      string
+	Input     []byte
+	Result    []byte
+	State     State
+	Error     string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -20,8 +29,8 @@ const (
 
 // Activity is a single unit of work within a workflow.
 type Task struct {
-	ID         string
-	WorkflowID string
+	ID                  string
+	WorkflowExecutionID string
 	TaskQueue  string
 	Name       string
 	TaskType   TaskType
@@ -35,9 +44,9 @@ type Task struct {
 
 // HistoryEvent represents an event in the workflow execution
 type HistoryEvent struct {
-	EventID      int64
-	WorkflowID   string
-	EventType    string
+	EventID             int64
+	WorkflowExecutionID string
+	EventType           string
 	ActivityName string
 	Result       []byte
 	CreatedAt    time.Time

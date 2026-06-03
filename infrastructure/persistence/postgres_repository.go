@@ -10,19 +10,28 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// Workflow represents one workflow execution.
-type Workflow struct {
+// WorkflowExecution represents one workflow execution.
+type WorkflowExecution struct {
 	ID        string
 	Name      string
+	Input     []byte
+	Result    []byte
 	State     string
+	Error     string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// WorkflowDefinition represents a registered workflow type.
+type WorkflowDefinition struct {
+	Name      string
+	CreatedAt time.Time
 }
 
 // Task is a single unit of work within a workflow.
 type Task struct {
 	ID          string
-	WorkflowID  string
+	WorkflowExecutionID  string
 	Name        string
 	Input       []byte
 	Output      []byte
@@ -80,72 +89,134 @@ func New(dsn string) (*PostgresWorkflowRepository, *PostgresTaskRepository, *Pos
 // PostgresWorkflowRepository
 // ---------------------------------------------------------------------------
 
-// Migrate creates the workflow table if it does not already exist.
 func (s *PostgresWorkflowRepository) Migrate() error {
 	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS workflow (
-			id          TEXT PRIMARY KEY,
-			name        TEXT NOT NULL,
-			state       TEXT NOT NULL DEFAULT 'pending',
-			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		CREATE TABLE IF NOT EXISTS workflow_definition (
+			name       TEXT PRIMARY KEY,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS workflow_execution (
+			id         TEXT PRIMARY KEY,
+			name       TEXT NOT NULL,
+			input      BYTEA,
+			result     BYTEA,
+			state      TEXT NOT NULL,
+			error      TEXT,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT fk_def
+				FOREIGN KEY (name)
+				REFERENCES workflow_definition(name)
+				ON DELETE CASCADE
 		);
 	`)
 	return err
 }
 
-// Save inserts a new workflow row.
-func (s *PostgresWorkflowRepository) Save(w *workflow.Workflow) error {
+func (s *PostgresWorkflowRepository) SaveDefinition(def *workflow.WorkflowDefinition) error {
 	_, err := s.db.Exec(`
-		INSERT INTO workflow (id, name, state)
-		VALUES ($1, $2, $3)
-	`, w.ID, w.Name, w.State)
+		INSERT INTO workflow_definition (name, created_at)
+		VALUES ($1, $2)
+		ON CONFLICT (name) DO NOTHING
+	`, def.Name, def.CreatedAt)
 
 	if err != nil {
-		return fmt.Errorf("repo: failed to save workflow: %w", err)
+		return fmt.Errorf("repo: failed to save workflow definition: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresWorkflowRepository) FindDefinitionByName(name string) (*workflow.WorkflowDefinition, error) {
+	row := s.db.QueryRow(`
+		SELECT name, created_at
+		FROM workflow_definition
+		WHERE name = $1
+	`, name)
+
+	var d workflow.WorkflowDefinition
+	if err := row.Scan(
+		&d.Name,
+		&d.CreatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("repo: workflow definition not found")
+		}
+		return nil, fmt.Errorf("repo: failed to find definition: %w", err)
+	}
+
+	return &d, nil
+}
+
+func (s *PostgresWorkflowRepository) SaveExecution(exec *workflow.WorkflowExecution) error {
+	_, err := s.db.Exec(`
+		INSERT INTO workflow_execution (id, name, input, result, state, error, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`,
+		exec.ID,
+		exec.Name,
+		nullableBytes(exec.Input),
+		nullableBytes(exec.Result),
+		string(exec.State),
+		nullableString(exec.Error),
+		exec.CreatedAt,
+		exec.UpdatedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("repo: failed to save workflow execution: %w", err)
 	}
 
 	return nil
 }
 
-// FindByID returns the workflow with the given ID, or nil if not found.
-func (s *PostgresWorkflowRepository) FindByID(id string) (*workflow.Workflow, error) {
+func (s *PostgresWorkflowRepository) FindExecutionByID(id string) (*workflow.WorkflowExecution, error) {
 	row := s.db.QueryRow(`
-		SELECT id, name, state, created_at, updated_at
-		FROM workflow
+		SELECT id, name, input, result, state, error, created_at, updated_at
+		FROM workflow_execution
 		WHERE id = $1
 	`, id)
 
-	w := &workflow.Workflow{}
+	var w workflow.WorkflowExecution
 	var state string
-	err := row.Scan(
+	var input, result []byte
+	var execErr sql.NullString
+
+	if err := row.Scan(
 		&w.ID,
 		&w.Name,
+		&input,
+		&result,
 		&state,
+		&execErr,
 		&w.CreatedAt,
 		&w.UpdatedAt,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("repo: workflow execution not found")
+		}
+		return nil, fmt.Errorf("repo: failed to find execution: %w", err)
 	}
-	if err != nil {
-		return nil, fmt.Errorf("repo: failed to fetch workflow: %w", err)
-	}
-	w.State = workflow.State(state)
 
-	return w, nil
+	w.Input = input
+	w.Result = result
+	w.State = workflow.State(state)
+	if execErr.Valid {
+		w.Error = execErr.String
+	}
+
+	return &w, nil
 }
 
-// UpdateState sets the state column for the given workflow ID.
-func (s *PostgresWorkflowRepository) UpdateState(id string, state workflow.State) error {
+func (s *PostgresWorkflowRepository) UpdateExecutionState(id string, state workflow.State) error {
 	_, err := s.db.Exec(`
-		UPDATE workflow
+		UPDATE workflow_execution
 		SET state = $1, updated_at = NOW()
 		WHERE id = $2
 	`, string(state), id)
 
 	if err != nil {
-		return fmt.Errorf("repo: failed to update workflow state: %w", err)
+		return fmt.Errorf("repo: failed to update execution state: %w", err)
 	}
 
 	return nil
@@ -162,7 +233,7 @@ func (s *PostgresTaskRepository) Migrate() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS task (
 			id            TEXT PRIMARY KEY,
-			workflow_id   TEXT NOT NULL,
+			workflow_execution_id TEXT NOT NULL,
 			task_queue    TEXT NOT NULL,
 			name          TEXT NOT NULL,
 			task_type     TEXT NOT NULL,
@@ -170,16 +241,16 @@ func (s *PostgresTaskRepository) Migrate() error {
 			input         BYTEA NOT NULL,
 			output        BYTEA,
 
-			state         TEXT NOT NULL DEFAULT 'pending',
+			state         TEXT NOT NULL,
 			error         TEXT,
 
 			scheduled_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			completed_at  TIMESTAMPTZ,
 			locked_until  TIMESTAMPTZ,
 
-			CONSTRAINT fk_workflow
-				FOREIGN KEY (workflow_id)
-				REFERENCES workflow(id)
+			CONSTRAINT fk_execution
+				FOREIGN KEY (workflow_execution_id)
+				REFERENCES workflow_execution(id)
 				ON DELETE CASCADE
 		);
 	`)
@@ -189,11 +260,11 @@ func (s *PostgresTaskRepository) Migrate() error {
 // SaveTask inserts a new task row.
 func (s *PostgresTaskRepository) SaveTask(task *workflow.Task) error {
 	_, err := s.db.Exec(`
-		INSERT INTO task (id, workflow_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at)
+		INSERT INTO task (id, workflow_execution_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`,
 		task.ID,
-		task.WorkflowID,
+		task.WorkflowExecutionID,
 		task.TaskQueue,
 		task.Name,
 		string(task.TaskType),
@@ -214,14 +285,14 @@ func (s *PostgresTaskRepository) SaveTask(task *workflow.Task) error {
 
 // FindPendingTasks returns all tasks for the given workflow that are in the
 // "pending" state.
-func (s *PostgresTaskRepository) FindPendingTasks(workflowID string) ([]workflow.Task, error) {
+func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([]workflow.Task, error) {
 	rows, err := s.db.Query(`
-		SELECT id, workflow_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
 		FROM task
-		WHERE workflow_id = $1
+		WHERE workflow_execution_id = $1
 		  AND state = 'CREATED'
 		ORDER BY scheduled_at ASC
-	`, workflowID)
+	`, workflowExecutionID)
 	if err != nil {
 		return nil, fmt.Errorf("repo: failed to query pending tasks: %w", err)
 	}
@@ -239,7 +310,7 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowID string) ([]workflow
 
 		if err := rows.Scan(
 			&t.ID,
-			&t.WorkflowID,
+			&t.WorkflowExecutionID,
 			&t.TaskQueue,
 			&t.Name,
 			&taskType,
@@ -298,7 +369,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	defer tx.Rollback()
 
 	row := tx.QueryRow(`
-		SELECT id, workflow_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
 		FROM task
 		WHERE task_queue = $1 AND state = 'CREATED' AND (locked_until IS NULL OR locked_until < NOW())
 		ORDER BY scheduled_at ASC
@@ -316,7 +387,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 
 	if err := row.Scan(
 		&t.ID,
-		&t.WorkflowID,
+		&t.WorkflowExecutionID,
 		&t.TaskQueue,
 		&t.Name,
 		&taskType,
@@ -381,14 +452,14 @@ func (s *PostgresTaskRepository) UpdateTaskComplete(taskID string, result []byte
 }
 
 // FindLatestTask finds the most recently scheduled task for a workflow.
-func (s *PostgresTaskRepository) FindLatestTask(workflowID string) (*workflow.Task, error) {
+func (s *PostgresTaskRepository) FindLatestTask(workflowExecutionID string) (*workflow.Task, error) {
 	row := s.db.QueryRow(`
-		SELECT id, workflow_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
 		FROM task
-		WHERE workflow_id = $1
+		WHERE workflow_execution_id = $1
 		ORDER BY scheduled_at DESC
 		LIMIT 1
-	`, workflowID)
+	`, workflowExecutionID)
 
 	var t workflow.Task
 	var output []byte
@@ -400,7 +471,7 @@ func (s *PostgresTaskRepository) FindLatestTask(workflowID string) (*workflow.Ta
 
 	if err := row.Scan(
 		&t.ID,
-		&t.WorkflowID,
+		&t.WorkflowExecutionID,
 		&t.TaskQueue,
 		&t.Name,
 		&taskType,
@@ -452,14 +523,14 @@ func (s *PostgresHistoryRepository) Migrate() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS history_event (
 			id            SERIAL PRIMARY KEY,
-			workflow_id   TEXT NOT NULL,
+			workflow_execution_id TEXT NOT NULL,
 			event_type    TEXT NOT NULL,
 			activity_name TEXT NOT NULL,
 			result        BYTEA,
 			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			CONSTRAINT fk_history_workflow
-				FOREIGN KEY (workflow_id)
-				REFERENCES workflow(id)
+			CONSTRAINT fk_history_execution
+				FOREIGN KEY (workflow_execution_id)
+				REFERENCES workflow_execution(id)
 				ON DELETE CASCADE
 		);
 	`)
@@ -468,10 +539,10 @@ func (s *PostgresHistoryRepository) Migrate() error {
 
 func (s *PostgresHistoryRepository) SaveEvent(event *workflow.HistoryEvent) error {
 	err := s.db.QueryRow(`
-		INSERT INTO history_event (workflow_id, event_type, activity_name, result, created_at)
+		INSERT INTO history_event (workflow_execution_id, event_type, activity_name, result, created_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
-	`, event.WorkflowID, event.EventType, event.ActivityName, nullableBytes(event.Result), event.CreatedAt).Scan(&event.EventID)
+	`, event.WorkflowExecutionID, event.EventType, event.ActivityName, nullableBytes(event.Result), event.CreatedAt).Scan(&event.EventID)
 
 	if err != nil {
 		return fmt.Errorf("repo: failed to save history event: %w", err)
@@ -480,13 +551,13 @@ func (s *PostgresHistoryRepository) SaveEvent(event *workflow.HistoryEvent) erro
 	return nil
 }
 
-func (s *PostgresHistoryRepository) GetHistory(workflowID string) ([]workflow.HistoryEvent, error) {
+func (s *PostgresHistoryRepository) GetHistory(workflowExecutionID string) ([]workflow.HistoryEvent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, workflow_id, event_type, activity_name, result, created_at
+		SELECT id, workflow_execution_id, event_type, activity_name, result, created_at
 		FROM history_event
-		WHERE workflow_id = $1
+		WHERE workflow_execution_id = $1
 		ORDER BY id ASC
-	`, workflowID)
+	`, workflowExecutionID)
 	if err != nil {
 		return nil, fmt.Errorf("repo: failed to query history: %w", err)
 	}
@@ -498,7 +569,7 @@ func (s *PostgresHistoryRepository) GetHistory(workflowID string) ([]workflow.Hi
 		var result []byte
 		if err := rows.Scan(
 			&e.EventID,
-			&e.WorkflowID,
+			&e.WorkflowExecutionID,
 			&e.EventType,
 			&e.ActivityName,
 			&result,
