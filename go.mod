@@ -3,6 +3,7 @@ module github.com/yadukrishnan2004/antflow-server
 go 1.26.3
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11

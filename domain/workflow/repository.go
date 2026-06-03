@@ -13,5 +13,13 @@ type TaskRepository interface {
 	FindAndLockPendingTask(taskQueue string) (*Task, error)
 	UpdateState(taskID string, state State) error
 	UpdateTaskComplete(taskID string, result []byte, errString string) error
+	FindLatestTask(workflowID string) (*Task, error)
+	ResetTimedOutTasks() error
+	Migrate() error
+}
+
+type HistoryRepository interface {
+	SaveEvent(event *HistoryEvent) error
+	GetHistory(workflowID string) ([]HistoryEvent, error)
 	Migrate() error
 }

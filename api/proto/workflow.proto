@@ -12,6 +12,7 @@ service WorkflowService {
   rpc StreamTasks (StreamTasksRequest) returns (stream StreamTaskResponse);
   rpc CompleteTask (CompleteTaskRequest) returns (CompleteTaskResponse);
   rpc RespondWorkflowTaskCompleted (RespondWorkflowTaskCompletedRequest) returns (RespondWorkflowTaskCompletedResponse);
+  rpc GetWorkflowResult (GetWorkflowResultRequest) returns (GetWorkflowResultResponse);
 }
 
 enum TaskType {
@@ -33,6 +34,7 @@ message RegisterWorkflowResponse {
 message StartWorkflowRequest {
   string workflow_id = 1;
   bytes input = 2;
+  string task_queue = 3;
 }
 
 message StartWorkflowResponse {
@@ -89,4 +91,14 @@ message RespondWorkflowTaskCompletedRequest {
 
 message RespondWorkflowTaskCompletedResponse {
   bool success = 1;
+}
+
+message GetWorkflowResultRequest {
+  string workflow_id = 1;
+}
+
+message GetWorkflowResultResponse {
+  string state = 1;
+  bytes result = 2;
+  string error = 3;
 }

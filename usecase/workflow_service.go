@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
 
@@ -13,23 +14,26 @@ type WorkflowService interface {
 	StartWorkflow(workflowID string, taskQueue string, input []byte) (*workflow.Task, error)
 	PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error)
 	CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error
+	GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.Task, error)
 }
 
 type workflowInteractor struct {
 	workflowRepo workflow.WorkflowRepository
 	taskRepo     workflow.TaskRepository
+	historyRepo  workflow.HistoryRepository
 }
 
-func NewWorkflowService(wRepo workflow.WorkflowRepository, tRepo workflow.TaskRepository) WorkflowService {
+func NewWorkflowService(wRepo workflow.WorkflowRepository, tRepo workflow.TaskRepository, hRepo workflow.HistoryRepository) WorkflowService {
 	return &workflowInteractor{
 		workflowRepo: wRepo,
 		taskRepo:     tRepo,
+		historyRepo:  hRepo,
 	}
 }
 
 func (i *workflowInteractor) RegisterWorkflow(name string) (*workflow.Workflow, error) {
 	w := &workflow.Workflow{
-		ID:        fmt.Sprintf("wf-%d", time.Now().UnixNano()),
+		ID:        fmt.Sprintf("wf-%s", uuid.New().String()),
 		Name:      name,
 		State:     workflow.StateCreated,
 		CreatedAt: time.Now(),
@@ -63,7 +67,7 @@ func (i *workflowInteractor) StartWorkflow(workflowID string, taskQueue string, 
 	}
 
 	t := &workflow.Task{
-		ID:          fmt.Sprintf("task-%d", time.Now().UnixNano()),
+		ID:          fmt.Sprintf("task-%s", uuid.New().String()),
 		WorkflowID:  w.ID,
 		TaskQueue:   taskQueue,
 		Name:        w.Name,
@@ -84,4 +88,8 @@ func (i *workflowInteractor) PollTask(ctx context.Context, taskQueue string) (*w
 
 func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error {
 	return i.taskRepo.UpdateTaskComplete(taskID, result, errString)
+}
+
+func (i *workflowInteractor) GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.Task, error) {
+	return i.taskRepo.FindLatestTask(workflowID)
 }

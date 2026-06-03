@@ -30,6 +30,7 @@ type Task struct {
 	Error       string
 	ScheduledAt time.Time
 	CompletedAt time.Time
+	LockedUntil time.Time
 }
 
 // PostgresWorkflowRepository implements workflow.WorkflowRepository.
@@ -42,26 +43,37 @@ type PostgresTaskRepository struct {
 	db *sql.DB
 }
 
-// New opens a Postgres connection, runs migrations for both repositories,
+// PostgresHistoryRepository implements workflow.HistoryRepository.
+type PostgresHistoryRepository struct {
+	db *sql.DB
+}
+
+// New opens a Postgres connection, runs migrations for all repositories,
 // and returns them together.
-func New(dsn string) (*PostgresWorkflowRepository, *PostgresTaskRepository, error) {
+func New(dsn string) (*PostgresWorkflowRepository, *PostgresTaskRepository, *PostgresHistoryRepository, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return nil, nil, fmt.Errorf("store: failed to open database: %w", err)
+		return nil, nil, nil, fmt.Errorf("store: failed to open database: %w", err)
 	}
 
 	wRepo := &PostgresWorkflowRepository{db: db}
 	tRepo := &PostgresTaskRepository{db: db}
 
+	hRepo := &PostgresHistoryRepository{db: db}
+
 	if err := wRepo.Migrate(); err != nil {
-		return nil, nil, fmt.Errorf("store: workflow migration failed: %w", err)
+		return nil, nil, nil, fmt.Errorf("store: workflow migration failed: %w", err)
 	}
 
 	if err := tRepo.Migrate(); err != nil {
-		return nil, nil, fmt.Errorf("store: task migration failed: %w", err)
+		return nil, nil, nil, fmt.Errorf("store: task migration failed: %w", err)
 	}
 
-	return wRepo, tRepo, nil
+	if err := hRepo.Migrate(); err != nil {
+		return nil, nil, nil, fmt.Errorf("store: history migration failed: %w", err)
+	}
+
+	return wRepo, tRepo, hRepo, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +165,7 @@ func (s *PostgresTaskRepository) Migrate() error {
 			workflow_id   TEXT NOT NULL,
 			task_queue    TEXT NOT NULL,
 			name          TEXT NOT NULL,
+			task_type     TEXT NOT NULL,
 
 			input         BYTEA NOT NULL,
 			output        BYTEA,
@@ -162,6 +175,7 @@ func (s *PostgresTaskRepository) Migrate() error {
 
 			scheduled_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			completed_at  TIMESTAMPTZ,
+			locked_until  TIMESTAMPTZ,
 
 			CONSTRAINT fk_workflow
 				FOREIGN KEY (workflow_id)
@@ -175,13 +189,14 @@ func (s *PostgresTaskRepository) Migrate() error {
 // SaveTask inserts a new task row.
 func (s *PostgresTaskRepository) SaveTask(task *workflow.Task) error {
 	_, err := s.db.Exec(`
-		INSERT INTO task (id, workflow_id, task_queue, name, input, output, state, error, scheduled_at, completed_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO task (id, workflow_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`,
 		task.ID,
 		task.WorkflowID,
 		task.TaskQueue,
 		task.Name,
+		string(task.TaskType),
 		task.Input,
 		nullableBytes(task.Output),
 		string(task.State),
@@ -201,7 +216,7 @@ func (s *PostgresTaskRepository) SaveTask(task *workflow.Task) error {
 // "pending" state.
 func (s *PostgresTaskRepository) FindPendingTasks(workflowID string) ([]workflow.Task, error) {
 	rows, err := s.db.Query(`
-		SELECT id, workflow_id, task_queue, name, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
 		FROM task
 		WHERE workflow_id = $1
 		  AND state = 'CREATED'
@@ -218,6 +233,7 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowID string) ([]workflow
 		var output []byte
 		var input []byte
 		var state string
+		var taskType string
 		var taskErr sql.NullString
 		var completedAt sql.NullTime
 
@@ -226,6 +242,7 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowID string) ([]workflow
 			&t.WorkflowID,
 			&t.TaskQueue,
 			&t.Name,
+			&taskType,
 			&input,
 			&output,
 			&state,
@@ -239,6 +256,7 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowID string) ([]workflow
 		t.Input = input
 		t.Output = output
 		t.State = workflow.State(state)
+		t.TaskType = workflow.TaskType(taskType)
 		if taskErr.Valid {
 			t.Error = taskErr.String
 		}
@@ -280,9 +298,9 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	defer tx.Rollback()
 
 	row := tx.QueryRow(`
-		SELECT id, workflow_id, task_queue, name, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
 		FROM task
-		WHERE task_queue = $1 AND state = 'CREATED'
+		WHERE task_queue = $1 AND state = 'CREATED' AND (locked_until IS NULL OR locked_until < NOW())
 		ORDER BY scheduled_at ASC
 		FOR UPDATE SKIP LOCKED
 		LIMIT 1
@@ -292,6 +310,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	var output []byte
 	var input []byte
 	var state string
+	var taskType string
 	var taskErr sql.NullString
 	var completedAt sql.NullTime
 
@@ -300,6 +319,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 		&t.WorkflowID,
 		&t.TaskQueue,
 		&t.Name,
+		&taskType,
 		&input,
 		&output,
 		&state,
@@ -316,6 +336,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	t.Input = input
 	t.Output = output
 	t.State = workflow.StateRunning
+	t.TaskType = workflow.TaskType(taskType)
 	if taskErr.Valid {
 		t.Error = taskErr.String
 	}
@@ -325,7 +346,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 
 	_, err = tx.Exec(`
 		UPDATE task
-		SET state = 'RUNNING'
+		SET state = 'RUNNING', locked_until = NOW() + INTERVAL '5 minutes'
 		WHERE id = $1
 	`, t.ID)
 	if err != nil {
@@ -357,6 +378,143 @@ func (s *PostgresTaskRepository) UpdateTaskComplete(taskID string, result []byte
 	}
 
 	return nil
+}
+
+// FindLatestTask finds the most recently scheduled task for a workflow.
+func (s *PostgresTaskRepository) FindLatestTask(workflowID string) (*workflow.Task, error) {
+	row := s.db.QueryRow(`
+		SELECT id, workflow_id, task_queue, name, task_type, input, output, state, error, scheduled_at, completed_at
+		FROM task
+		WHERE workflow_id = $1
+		ORDER BY scheduled_at DESC
+		LIMIT 1
+	`, workflowID)
+
+	var t workflow.Task
+	var output []byte
+	var input []byte
+	var state string
+	var taskType string
+	var taskErr sql.NullString
+	var completedAt sql.NullTime
+
+	if err := row.Scan(
+		&t.ID,
+		&t.WorkflowID,
+		&t.TaskQueue,
+		&t.Name,
+		&taskType,
+		&input,
+		&output,
+		&state,
+		&taskErr,
+		&t.ScheduledAt,
+		&completedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("repo: failed to find latest task: %w", err)
+	}
+
+	t.Input = input
+	t.Output = output
+	t.State = workflow.State(state)
+	t.TaskType = workflow.TaskType(taskType)
+	if taskErr.Valid {
+		t.Error = taskErr.String
+	}
+	if completedAt.Valid {
+		t.CompletedAt = completedAt.Time
+	}
+
+	return &t, nil
+}
+
+// ResetTimedOutTasks sets RUNNING tasks that have exceeded their locked_until back to CREATED
+func (s *PostgresTaskRepository) ResetTimedOutTasks() error {
+	_, err := s.db.Exec(`
+		UPDATE task
+		SET state = 'CREATED', locked_until = NULL
+		WHERE state = 'RUNNING' AND locked_until < NOW()
+	`)
+	if err != nil {
+		return fmt.Errorf("repo: failed to reset timed out tasks: %w", err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// PostgresHistoryRepository
+// ---------------------------------------------------------------------------
+
+func (s *PostgresHistoryRepository) Migrate() error {
+	_, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS history_event (
+			id            SERIAL PRIMARY KEY,
+			workflow_id   TEXT NOT NULL,
+			event_type    TEXT NOT NULL,
+			activity_name TEXT NOT NULL,
+			result        BYTEA,
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT fk_history_workflow
+				FOREIGN KEY (workflow_id)
+				REFERENCES workflow(id)
+				ON DELETE CASCADE
+		);
+	`)
+	return err
+}
+
+func (s *PostgresHistoryRepository) SaveEvent(event *workflow.HistoryEvent) error {
+	err := s.db.QueryRow(`
+		INSERT INTO history_event (workflow_id, event_type, activity_name, result, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`, event.WorkflowID, event.EventType, event.ActivityName, nullableBytes(event.Result), event.CreatedAt).Scan(&event.EventID)
+
+	if err != nil {
+		return fmt.Errorf("repo: failed to save history event: %w", err)
+	}
+
+	return nil
+}
+
+func (s *PostgresHistoryRepository) GetHistory(workflowID string) ([]workflow.HistoryEvent, error) {
+	rows, err := s.db.Query(`
+		SELECT id, workflow_id, event_type, activity_name, result, created_at
+		FROM history_event
+		WHERE workflow_id = $1
+		ORDER BY id ASC
+	`, workflowID)
+	if err != nil {
+		return nil, fmt.Errorf("repo: failed to query history: %w", err)
+	}
+	defer rows.Close()
+
+	var events []workflow.HistoryEvent
+	for rows.Next() {
+		var e workflow.HistoryEvent
+		var result []byte
+		if err := rows.Scan(
+			&e.EventID,
+			&e.WorkflowID,
+			&e.EventType,
+			&e.ActivityName,
+			&result,
+			&e.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("repo: failed to scan history row: %w", err)
+		}
+		e.Result = result
+		events = append(events, e)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repo: row iteration error: %w", err)
+	}
+
+	return events, nil
 }
 
 // ---------------------------------------------------------------------------

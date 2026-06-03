@@ -24,6 +24,7 @@ const (
 	WorkflowService_StreamTasks_FullMethodName                  = "/workflow.WorkflowService/StreamTasks"
 	WorkflowService_CompleteTask_FullMethodName                 = "/workflow.WorkflowService/CompleteTask"
 	WorkflowService_RespondWorkflowTaskCompleted_FullMethodName = "/workflow.WorkflowService/RespondWorkflowTaskCompleted"
+	WorkflowService_GetWorkflowResult_FullMethodName            = "/workflow.WorkflowService/GetWorkflowResult"
 )
 
 // WorkflowServiceClient is the client API for WorkflowService service.
@@ -35,6 +36,7 @@ type WorkflowServiceClient interface {
 	StreamTasks(ctx context.Context, in *StreamTasksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamTaskResponse], error)
 	CompleteTask(ctx context.Context, in *CompleteTaskRequest, opts ...grpc.CallOption) (*CompleteTaskResponse, error)
 	RespondWorkflowTaskCompleted(ctx context.Context, in *RespondWorkflowTaskCompletedRequest, opts ...grpc.CallOption) (*RespondWorkflowTaskCompletedResponse, error)
+	GetWorkflowResult(ctx context.Context, in *GetWorkflowResultRequest, opts ...grpc.CallOption) (*GetWorkflowResultResponse, error)
 }
 
 type workflowServiceClient struct {
@@ -104,6 +106,16 @@ func (c *workflowServiceClient) RespondWorkflowTaskCompleted(ctx context.Context
 	return out, nil
 }
 
+func (c *workflowServiceClient) GetWorkflowResult(ctx context.Context, in *GetWorkflowResultRequest, opts ...grpc.CallOption) (*GetWorkflowResultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWorkflowResultResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_GetWorkflowResult_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkflowServiceServer is the server API for WorkflowService service.
 // All implementations must embed UnimplementedWorkflowServiceServer
 // for forward compatibility.
@@ -113,6 +125,7 @@ type WorkflowServiceServer interface {
 	StreamTasks(*StreamTasksRequest, grpc.ServerStreamingServer[StreamTaskResponse]) error
 	CompleteTask(context.Context, *CompleteTaskRequest) (*CompleteTaskResponse, error)
 	RespondWorkflowTaskCompleted(context.Context, *RespondWorkflowTaskCompletedRequest) (*RespondWorkflowTaskCompletedResponse, error)
+	GetWorkflowResult(context.Context, *GetWorkflowResultRequest) (*GetWorkflowResultResponse, error)
 	mustEmbedUnimplementedWorkflowServiceServer()
 }
 
@@ -137,6 +150,9 @@ func (UnimplementedWorkflowServiceServer) CompleteTask(context.Context, *Complet
 }
 func (UnimplementedWorkflowServiceServer) RespondWorkflowTaskCompleted(context.Context, *RespondWorkflowTaskCompletedRequest) (*RespondWorkflowTaskCompletedResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RespondWorkflowTaskCompleted not implemented")
+}
+func (UnimplementedWorkflowServiceServer) GetWorkflowResult(context.Context, *GetWorkflowResultRequest) (*GetWorkflowResultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetWorkflowResult not implemented")
 }
 func (UnimplementedWorkflowServiceServer) mustEmbedUnimplementedWorkflowServiceServer() {}
 func (UnimplementedWorkflowServiceServer) testEmbeddedByValue()                         {}
@@ -242,6 +258,24 @@ func _WorkflowService_RespondWorkflowTaskCompleted_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkflowService_GetWorkflowResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkflowResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).GetWorkflowResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_GetWorkflowResult_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).GetWorkflowResult(ctx, req.(*GetWorkflowResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkflowService_ServiceDesc is the grpc.ServiceDesc for WorkflowService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -264,6 +298,10 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RespondWorkflowTaskCompleted",
 			Handler:    _WorkflowService_RespondWorkflowTaskCompleted_Handler,
+		},
+		{
+			MethodName: "GetWorkflowResult",
+			Handler:    _WorkflowService_GetWorkflowResult_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

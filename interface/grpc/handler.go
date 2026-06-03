@@ -44,9 +44,11 @@ func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkfl
 		return nil, status.Error(codes.InvalidArgument, "workflow id is required")
 	}
 
-	// For simplicity, hardcode a default task queue, or you could add it to StartWorkflowRequest
-	// We'll use a default "default" queue if not provided in the proto.
-	task, err := h.service.StartWorkflow(req.WorkflowId, "default", req.Input)
+	taskQueue := req.TaskQueue
+	if taskQueue == "" {
+		taskQueue = "default"
+	}
+	task, err := h.service.StartWorkflow(req.WorkflowId, taskQueue, req.Input)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to start workflow: %v", err)
 	}
@@ -105,4 +107,29 @@ func (h *WorkflowHandler) CompleteTask(ctx context.Context, req *pb.CompleteTask
 	}
 
 	return &pb.CompleteTaskResponse{Success: true}, nil
+}
+
+func (h *WorkflowHandler) RespondWorkflowTaskCompleted(ctx context.Context, req *pb.RespondWorkflowTaskCompletedRequest) (*pb.RespondWorkflowTaskCompletedResponse, error) {
+	// Not implemented yet
+	return nil, status.Error(codes.Unimplemented, "method RespondWorkflowTaskCompleted not implemented")
+}
+
+func (h *WorkflowHandler) GetWorkflowResult(ctx context.Context, req *pb.GetWorkflowResultRequest) (*pb.GetWorkflowResultResponse, error) {
+	if req.WorkflowId == "" {
+		return nil, status.Error(codes.InvalidArgument, "workflow id is required")
+	}
+
+	task, err := h.service.GetWorkflowResult(ctx, req.WorkflowId)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get workflow result: %v", err)
+	}
+	if task == nil {
+		return nil, status.Error(codes.NotFound, "workflow task not found")
+	}
+
+	return &pb.GetWorkflowResultResponse{
+		State:  string(task.State),
+		Result: task.Output,
+		Error:  task.Error,
+	}, nil
 }

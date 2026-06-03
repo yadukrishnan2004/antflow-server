@@ -179,6 +179,7 @@ type StartWorkflowRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
 	Input         []byte                 `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	TaskQueue     string                 `protobuf:"bytes,3,opt,name=task_queue,json=taskQueue,proto3" json:"task_queue,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -225,6 +226,13 @@ func (x *StartWorkflowRequest) GetInput() []byte {
 		return x.Input
 	}
 	return nil
+}
+
+func (x *StartWorkflowRequest) GetTaskQueue() string {
+	if x != nil {
+		return x.TaskQueue
+	}
+	return ""
 }
 
 type StartWorkflowResponse struct {
@@ -783,6 +791,110 @@ func (x *RespondWorkflowTaskCompletedResponse) GetSuccess() bool {
 	return false
 }
 
+type GetWorkflowResultRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkflowResultRequest) Reset() {
+	*x = GetWorkflowResultRequest{}
+	mi := &file_api_proto_workflow_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkflowResultRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkflowResultRequest) ProtoMessage() {}
+
+func (x *GetWorkflowResultRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkflowResultRequest.ProtoReflect.Descriptor instead.
+func (*GetWorkflowResultRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetWorkflowResultRequest) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+type GetWorkflowResultResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	State         string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	Result        []byte                 `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkflowResultResponse) Reset() {
+	*x = GetWorkflowResultResponse{}
+	mi := &file_api_proto_workflow_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkflowResultResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkflowResultResponse) ProtoMessage() {}
+
+func (x *GetWorkflowResultResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkflowResultResponse.ProtoReflect.Descriptor instead.
+func (*GetWorkflowResultResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetWorkflowResultResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *GetWorkflowResultResponse) GetResult() []byte {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *GetWorkflowResultResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_api_proto_workflow_proto protoreflect.FileDescriptor
 
 const file_api_proto_workflow_proto_rawDesc = "" +
@@ -794,11 +906,13 @@ const file_api_proto_workflow_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"M\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"l\n" +
 	"\x14StartWorkflowRequest\x12\x1f\n" +
 	"\vworkflow_id\x18\x01 \x01(\tR\n" +
 	"workflowId\x12\x14\n" +
-	"\x05input\x18\x02 \x01(\fR\x05input\"r\n" +
+	"\x05input\x18\x02 \x01(\fR\x05input\x12\x1d\n" +
+	"\n" +
+	"task_queue\x18\x03 \x01(\tR\ttaskQueue\"r\n" +
 	"\x15StartWorkflowResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vworkflow_id\x18\x02 \x01(\tR\n" +
@@ -840,17 +954,25 @@ const file_api_proto_workflow_proto_rawDesc = "" +
 	"\x12workflow_completed\x18\x04 \x01(\bR\x11workflowCompleted\x12'\n" +
 	"\x0fworkflow_result\x18\x05 \x01(\fR\x0eworkflowResult\"@\n" +
 	"$RespondWorkflowTaskCompletedResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess*U\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\";\n" +
+	"\x18GetWorkflowResultRequest\x12\x1f\n" +
+	"\vworkflow_id\x18\x01 \x01(\tR\n" +
+	"workflowId\"_\n" +
+	"\x19GetWorkflowResultResponse\x12\x14\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
+	"\x06result\x18\x02 \x01(\fR\x06result\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error*U\n" +
 	"\bTaskType\x12\x19\n" +
 	"\x15TASK_TYPE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12TASK_TYPE_WORKFLOW\x10\x01\x12\x16\n" +
-	"\x12TASK_TYPE_ACTIVITY\x10\x022\xd9\x03\n" +
+	"\x12TASK_TYPE_ACTIVITY\x10\x022\xb7\x04\n" +
 	"\x0fWorkflowService\x12Y\n" +
 	"\x10RegisterWorkflow\x12!.workflow.RegisterWorkflowRequest\x1a\".workflow.RegisterWorkflowResponse\x12P\n" +
 	"\rStartWorkflow\x12\x1e.workflow.StartWorkflowRequest\x1a\x1f.workflow.StartWorkflowResponse\x12K\n" +
 	"\vStreamTasks\x12\x1c.workflow.StreamTasksRequest\x1a\x1c.workflow.StreamTaskResponse0\x01\x12M\n" +
 	"\fCompleteTask\x12\x1d.workflow.CompleteTaskRequest\x1a\x1e.workflow.CompleteTaskResponse\x12}\n" +
-	"\x1cRespondWorkflowTaskCompleted\x12-.workflow.RespondWorkflowTaskCompletedRequest\x1a..workflow.RespondWorkflowTaskCompletedResponseB8Z6github.com/yadukrishnan2004/antflow-server/api/grpc/pbb\x06proto3"
+	"\x1cRespondWorkflowTaskCompleted\x12-.workflow.RespondWorkflowTaskCompletedRequest\x1a..workflow.RespondWorkflowTaskCompletedResponse\x12\\\n" +
+	"\x11GetWorkflowResult\x12\".workflow.GetWorkflowResultRequest\x1a#.workflow.GetWorkflowResultResponseB8Z6github.com/yadukrishnan2004/antflow-server/api/grpc/pbb\x06proto3"
 
 var (
 	file_api_proto_workflow_proto_rawDescOnce sync.Once
@@ -865,7 +987,7 @@ func file_api_proto_workflow_proto_rawDescGZIP() []byte {
 }
 
 var file_api_proto_workflow_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_proto_workflow_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_api_proto_workflow_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_api_proto_workflow_proto_goTypes = []any{
 	(TaskType)(0),                                // 0: workflow.TaskType
 	(*RegisterWorkflowRequest)(nil),              // 1: workflow.RegisterWorkflowRequest
@@ -880,10 +1002,12 @@ var file_api_proto_workflow_proto_goTypes = []any{
 	(*ScheduleActivityCommand)(nil),              // 10: workflow.ScheduleActivityCommand
 	(*RespondWorkflowTaskCompletedRequest)(nil),  // 11: workflow.RespondWorkflowTaskCompletedRequest
 	(*RespondWorkflowTaskCompletedResponse)(nil), // 12: workflow.RespondWorkflowTaskCompletedResponse
-	(*timestamppb.Timestamp)(nil),                // 13: google.protobuf.Timestamp
+	(*GetWorkflowResultRequest)(nil),             // 13: workflow.GetWorkflowResultRequest
+	(*GetWorkflowResultResponse)(nil),            // 14: workflow.GetWorkflowResultResponse
+	(*timestamppb.Timestamp)(nil),                // 15: google.protobuf.Timestamp
 }
 var file_api_proto_workflow_proto_depIdxs = []int32{
-	13, // 0: workflow.RegisterWorkflowResponse.created_at:type_name -> google.protobuf.Timestamp
+	15, // 0: workflow.RegisterWorkflowResponse.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: workflow.StreamTaskResponse.task_type:type_name -> workflow.TaskType
 	6,  // 2: workflow.StreamTaskResponse.history:type_name -> workflow.HistoryEvent
 	10, // 3: workflow.RespondWorkflowTaskCompletedRequest.commands:type_name -> workflow.ScheduleActivityCommand
@@ -892,13 +1016,15 @@ var file_api_proto_workflow_proto_depIdxs = []int32{
 	5,  // 6: workflow.WorkflowService.StreamTasks:input_type -> workflow.StreamTasksRequest
 	8,  // 7: workflow.WorkflowService.CompleteTask:input_type -> workflow.CompleteTaskRequest
 	11, // 8: workflow.WorkflowService.RespondWorkflowTaskCompleted:input_type -> workflow.RespondWorkflowTaskCompletedRequest
-	2,  // 9: workflow.WorkflowService.RegisterWorkflow:output_type -> workflow.RegisterWorkflowResponse
-	4,  // 10: workflow.WorkflowService.StartWorkflow:output_type -> workflow.StartWorkflowResponse
-	7,  // 11: workflow.WorkflowService.StreamTasks:output_type -> workflow.StreamTaskResponse
-	9,  // 12: workflow.WorkflowService.CompleteTask:output_type -> workflow.CompleteTaskResponse
-	12, // 13: workflow.WorkflowService.RespondWorkflowTaskCompleted:output_type -> workflow.RespondWorkflowTaskCompletedResponse
-	9,  // [9:14] is the sub-list for method output_type
-	4,  // [4:9] is the sub-list for method input_type
+	13, // 9: workflow.WorkflowService.GetWorkflowResult:input_type -> workflow.GetWorkflowResultRequest
+	2,  // 10: workflow.WorkflowService.RegisterWorkflow:output_type -> workflow.RegisterWorkflowResponse
+	4,  // 11: workflow.WorkflowService.StartWorkflow:output_type -> workflow.StartWorkflowResponse
+	7,  // 12: workflow.WorkflowService.StreamTasks:output_type -> workflow.StreamTaskResponse
+	9,  // 13: workflow.WorkflowService.CompleteTask:output_type -> workflow.CompleteTaskResponse
+	12, // 14: workflow.WorkflowService.RespondWorkflowTaskCompleted:output_type -> workflow.RespondWorkflowTaskCompletedResponse
+	14, // 15: workflow.WorkflowService.GetWorkflowResult:output_type -> workflow.GetWorkflowResultResponse
+	10, // [10:16] is the sub-list for method output_type
+	4,  // [4:10] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -915,7 +1041,7 @@ func file_api_proto_workflow_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_workflow_proto_rawDesc), len(file_api_proto_workflow_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
