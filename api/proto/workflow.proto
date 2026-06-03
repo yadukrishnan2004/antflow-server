@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package workflow;
+
+option go_package = "github.com/yadukrishnan2004/antflow-server/api/grpc/pb";
+
+import "google/protobuf/timestamp.proto";
+
+service WorkflowService {
+  rpc RegisterWorkflow (RegisterWorkflowRequest) returns (RegisterWorkflowResponse);
+  rpc StartWorkflow (StartWorkflowRequest) returns (StartWorkflowResponse);
+  rpc StreamTasks (StreamTasksRequest) returns (stream StreamTaskResponse);
+  rpc CompleteTask (CompleteTaskRequest) returns (CompleteTaskResponse);
+}
+
+message RegisterWorkflowRequest {
+  string name = 1;
+}
+
+message RegisterWorkflowResponse {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message StartWorkflowRequest {
+  string workflow_id = 1;
+  // JSON payload for the starting input
+  bytes input = 2;
+}
+
+message StartWorkflowResponse {
+  string id = 1;
+  string workflow_id = 2;
+  string name = 3;
+  string state = 4;
+}
+
+message StreamTasksRequest {
+  string worker_id = 1;
+  string task_queue = 2; // the queue the worker is listening to
+}
+
+message StreamTaskResponse {
+  string task_id = 1;
+  string workflow_id = 2;
+  string name = 3;
+  bytes input = 4;
+}
+
+message CompleteTaskRequest {
+  string task_id = 1;
+  string worker_id = 2;
+  bytes result = 3;
+  string error = 4;
+}
+
+message CompleteTaskResponse {
+  bool success = 1;
+}
