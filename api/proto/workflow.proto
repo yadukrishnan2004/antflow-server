@@ -11,6 +11,13 @@ service WorkflowService {
   rpc StartWorkflow (StartWorkflowRequest) returns (StartWorkflowResponse);
   rpc StreamTasks (StreamTasksRequest) returns (stream StreamTaskResponse);
   rpc CompleteTask (CompleteTaskRequest) returns (CompleteTaskResponse);
+  rpc RespondWorkflowTaskCompleted (RespondWorkflowTaskCompletedRequest) returns (RespondWorkflowTaskCompletedResponse);
+}
+
+enum TaskType {
+  TASK_TYPE_UNSPECIFIED = 0;
+  TASK_TYPE_WORKFLOW = 1;
+  TASK_TYPE_ACTIVITY = 2;
 }
 
 message RegisterWorkflowRequest {
@@ -25,7 +32,6 @@ message RegisterWorkflowResponse {
 
 message StartWorkflowRequest {
   string workflow_id = 1;
-  // JSON payload for the starting input
   bytes input = 2;
 }
 
@@ -38,7 +44,14 @@ message StartWorkflowResponse {
 
 message StreamTasksRequest {
   string worker_id = 1;
-  string task_queue = 2; // the queue the worker is listening to
+  string task_queue = 2;
+}
+
+message HistoryEvent {
+  int64 event_id = 1;
+  string event_type = 2; // e.g., "WorkflowExecutionStarted", "ActivityTaskCompleted"
+  string activity_name = 3; // relevant if it's an activity event
+  bytes result = 4; // output from the activity or input to workflow
 }
 
 message StreamTaskResponse {
@@ -46,6 +59,8 @@ message StreamTaskResponse {
   string workflow_id = 2;
   string name = 3;
   bytes input = 4;
+  TaskType task_type = 5;
+  repeated HistoryEvent history = 6; // Provided for WORKFLOW tasks
 }
 
 message CompleteTaskRequest {
@@ -56,5 +71,22 @@ message CompleteTaskRequest {
 }
 
 message CompleteTaskResponse {
+  bool success = 1;
+}
+
+message ScheduleActivityCommand {
+  string activity_name = 1;
+  bytes input = 2;
+}
+
+message RespondWorkflowTaskCompletedRequest {
+  string task_id = 1;
+  string worker_id = 2;
+  repeated ScheduleActivityCommand commands = 3; // Activities to schedule next
+  bool workflow_completed = 4; // True if the workflow is fully done
+  bytes workflow_result = 5; // Final result if completed
+}
+
+message RespondWorkflowTaskCompletedResponse {
   bool success = 1;
 }
