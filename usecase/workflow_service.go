@@ -90,7 +90,36 @@ func (i *workflowInteractor) PollTask(ctx context.Context, taskQueue string) (*w
 }
 
 func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error {
-	return i.taskRepo.UpdateTaskComplete(taskID, result, errString)
+	if err := i.taskRepo.UpdateTaskComplete(taskID, result, errString); err != nil {
+		return err
+	}
+
+	t, err := i.taskRepo.FindTaskByID(taskID)
+	if err != nil {
+		return err
+	}
+
+	// Update execution state to completed/failed
+	execState := workflow.StateCompleted
+	eventType := "WorkflowExecutionCompleted"
+	if errString != "" {
+		execState = workflow.StateFailed
+		eventType = "WorkflowExecutionFailed"
+	}
+
+	if err := i.workflowRepo.UpdateExecutionState(t.WorkflowExecutionID, execState); err != nil {
+		return err
+	}
+
+	// Save history event
+	event := &workflow.HistoryEvent{
+		WorkflowExecutionID: t.WorkflowExecutionID,
+		EventType:           eventType,
+		ActivityName:        t.Name,
+		Result:              result,
+		CreatedAt:           time.Now(),
+	}
+	return i.historyRepo.SaveEvent(event)
 }
 
 func (i *workflowInteractor) GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.Task, error) {

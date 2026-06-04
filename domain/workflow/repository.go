@@ -13,6 +13,7 @@ type WorkflowRepository interface {
 type TaskRepository interface {
 	SaveTask(task *Task) error
 	FindPendingTasks(workflowExecutionID string) ([]Task, error)
+	FindTaskByID(taskID string) (*Task, error)
 	FindAndLockPendingTask(taskQueue string) (*Task, error)
 	UpdateState(taskID string, state State) error
 	UpdateTaskComplete(taskID string, result []byte, errString string) error

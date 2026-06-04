@@ -404,6 +404,50 @@ func (s *PostgresTaskRepository) UpdateState(taskID string, state workflow.State
 	return nil
 }
 
+// FindTaskByID returns a task by its ID.
+func (s *PostgresTaskRepository) FindTaskByID(taskID string) (*workflow.Task, error) {
+	row := s.db.QueryRow(`
+		SELECT id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at
+		FROM task
+		WHERE id = $1
+	`, taskID)
+
+	var t workflow.Task
+	var state string
+	var taskErr sql.NullString
+	var completedAt sql.NullTime
+
+	if err := row.Scan(
+		&t.ID,
+		&t.WorkflowExecutionID,
+		&t.TaskQueue,
+		&t.Name,
+		&t.StepName,
+		&t.StepIndex,
+		&t.Input,
+		&t.Output,
+		&state,
+		&taskErr,
+		&t.ScheduledAt,
+		&completedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("repo: task not found")
+		}
+		return nil, fmt.Errorf("repo: failed to find task by id: %w", err)
+	}
+
+	t.State = workflow.State(state)
+	if taskErr.Valid {
+		t.Error = taskErr.String
+	}
+	if completedAt.Valid {
+		t.CompletedAt = completedAt.Time
+	}
+
+	return &t, nil
+}
+
 // FindAndLockPendingTask returns the oldest pending task for a given queue, updating its state to RUNNING.
 func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*workflow.Task, error) {
 	tx, err := s.db.Begin()
