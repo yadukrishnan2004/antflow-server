@@ -49,19 +49,22 @@ func (i *workflowInteractor) RegisterWorkflow(name string) (*workflow.WorkflowDe
 
 func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.Task, error) {
 	// 1. Ensure definition exists
-	_, err := i.workflowRepo.FindDefinitionByName(workflowName)
+	def, err := i.workflowRepo.FindDefinitionByName(workflowName)
 	if err != nil {
 		return nil, fmt.Errorf("workflow definition not found: %w", err)
 	}
 
 	// 2. Create Execution
 	exec := &workflow.WorkflowExecution{
-		ID:        fmt.Sprintf("run-%s", uuid.New().String()),
-		Name:      workflowName,
-		State:     workflow.StateRunning,
-		Input:     input,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:               fmt.Sprintf("run-%s", uuid.New().String()),
+		WorkflowName:     workflowName,
+		TaskQueue:        taskQueue,
+		State:            workflow.StateRunning,
+		Input:            input,
+		CurrentStepIndex: 0,
+		TotalSteps:       len(def.Steps), // Assuming def is retrieved above
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 
 	err = i.workflowRepo.SaveExecution(exec)
@@ -69,13 +72,26 @@ func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string
 		return nil, fmt.Errorf("failed to save workflow execution: %w", err)
 	}
 
+	var stepName string
+	if len(def.Steps) > 0 {
+		stepName = def.Steps[0].StepName
+		if taskQueue == "default" && def.Steps[0].TaskQueue != "" {
+			taskQueue = def.Steps[0].TaskQueue
+		}
+	} else {
+		stepName = workflowName
+	}
+
 	t := &workflow.Task{
-		ID:          fmt.Sprintf("task-%s", uuid.New().String()),
+		ID:                  fmt.Sprintf("task-%s", uuid.New().String()),
 		WorkflowExecutionID: exec.ID,
 		TaskQueue:           taskQueue,
-		Name:                workflowName,
-		Input:       input,
-		State:       workflow.StateCreated, // Should be pending or created. We map pending to "pending" in postgres_repository query for FindAndLockPendingTask.
+		StepIndex:           0,
+		StepName:            stepName,
+		Input:               input,
+		State:               workflow.StateCreated,
+		Attempt:             1,
+		MaxAttempts:         3,
 	}
 
 	if err := i.taskRepo.SaveTask(t); err != nil {
@@ -115,9 +131,13 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 	event := &workflow.HistoryEvent{
 		WorkflowExecutionID: t.WorkflowExecutionID,
 		EventType:           eventType,
-		ActivityName:        t.Name,
-		Result:              result,
+		StepName:            &t.StepName,
+		StepIndex:           &t.StepIndex,
+		Payload:             result,
 		CreatedAt:           time.Now(),
+	}
+	if errString != "" {
+		event.Error = errString
 	}
 	return i.historyRepo.SaveEvent(event)
 }

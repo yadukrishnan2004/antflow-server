@@ -56,7 +56,7 @@ func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkfl
 	return &pb.StartWorkflowResponse{
 		Id:         task.ID,
 		WorkflowId: task.WorkflowExecutionID,
-		Name:       task.Name,
+		Name:       task.StepName,
 		State:      string(task.State),
 	}, nil
 }
@@ -82,7 +82,7 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 				err = stream.Send(&pb.StreamTaskResponse{
 					TaskId:     task.ID,
 					WorkflowId: task.WorkflowExecutionID,
-					Name:       task.Name,
+					Name:       task.StepName,
 					StepName:   task.StepName,
 					StepIndex:  int32(task.StepIndex),
 					Input:      task.Input,
@@ -163,12 +163,16 @@ func (h *WorkflowHandler) StreamWorkflowHistory(req *pb.StreamWorkflowHistoryReq
 
 			terminalReached := false
 			for _, event := range events {
+				var actName string
+				if event.StepName != nil {
+					actName = *event.StepName
+				}
 				if event.EventID > lastSentEventID {
 					err = stream.Send(&pb.HistoryEvent{
 						EventId:      event.EventID,
 						EventType:    event.EventType,
-						ActivityName: event.ActivityName,
-						Result:       event.Result,
+						ActivityName: actName,
+						Result:       event.Payload,
 					})
 					if err != nil {
 						return err

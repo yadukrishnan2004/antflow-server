@@ -22,6 +22,12 @@ type TaskRepository interface {
 	Migrate() error
 }
 
+type CheckpointRepository interface {
+	SaveCheckpoint(checkpoint *Checkpoint) error
+	GetLatestCheckpoint(workflowExecutionID string) (*Checkpoint, error)
+	Migrate() error
+}
+
 type HistoryRepository interface {
 	SaveEvent(event *HistoryEvent) error
 	GetHistory(workflowExecutionID string) ([]HistoryEvent, error)

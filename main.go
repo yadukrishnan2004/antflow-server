@@ -15,7 +15,7 @@ import (
 func main() {
 	// Connect to PostgreSQL database
 	dsn := "postgres://postgres:1234@localhost:5432/postgres?sslmode=disable"
-	wRepo, tRepo, hRepo, err := persistence.New(dsn)
+	wRepo, tRepo, _, hRepo, err := persistence.New(dsn)
 	if err != nil {
 		log.Fatalf("failed to initialize persistence layer: %v", err)
 	}

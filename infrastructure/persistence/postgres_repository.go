@@ -10,41 +10,6 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// WorkflowExecution represents one workflow execution.
-type WorkflowExecution struct {
-	ID        string
-	Name      string
-	Input     []byte
-	Result    []byte
-	State     string
-	Error     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-}
-
-// WorkflowDefinition represents a registered workflow type.
-type WorkflowDefinition struct {
-	Name      string
-	CreatedAt time.Time
-}
-
-// Task is a single unit of work within a workflow.
-type Task struct {
-	ID                  string
-	WorkflowExecutionID string
-	TaskQueue           string
-	Name                string
-	StepName            string
-	StepIndex           int
-	Input               []byte
-	Output              []byte
-	State               string
-	Error               string
-	ScheduledAt         time.Time
-	CompletedAt         time.Time
-	LockedUntil         time.Time
-}
-
 // PostgresWorkflowRepository implements workflow.WorkflowRepository.
 type PostgresWorkflowRepository struct {
 	db *sql.DB
@@ -55,6 +20,11 @@ type PostgresTaskRepository struct {
 	db *sql.DB
 }
 
+// PostgresCheckpointRepository implements workflow.CheckpointRepository.
+type PostgresCheckpointRepository struct {
+	db *sql.DB
+}
+
 // PostgresHistoryRepository implements workflow.HistoryRepository.
 type PostgresHistoryRepository struct {
 	db *sql.DB
@@ -62,30 +32,34 @@ type PostgresHistoryRepository struct {
 
 // New opens a Postgres connection, runs migrations for all repositories,
 // and returns them together.
-func New(dsn string) (*PostgresWorkflowRepository, *PostgresTaskRepository, *PostgresHistoryRepository, error) {
+func New(dsn string) (*PostgresWorkflowRepository, *PostgresTaskRepository, *PostgresCheckpointRepository, *PostgresHistoryRepository, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("store: failed to open database: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("store: failed to open database: %w", err)
 	}
 
 	wRepo := &PostgresWorkflowRepository{db: db}
 	tRepo := &PostgresTaskRepository{db: db}
-
+	cRepo := &PostgresCheckpointRepository{db: db}
 	hRepo := &PostgresHistoryRepository{db: db}
 
 	if err := wRepo.Migrate(); err != nil {
-		return nil, nil, nil, fmt.Errorf("store: workflow migration failed: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("store: workflow migration failed: %w", err)
 	}
 
 	if err := tRepo.Migrate(); err != nil {
-		return nil, nil, nil, fmt.Errorf("store: task migration failed: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("store: task migration failed: %w", err)
+	}
+
+	if err := cRepo.Migrate(); err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("store: checkpoint migration failed: %w", err)
 	}
 
 	if err := hRepo.Migrate(); err != nil {
-		return nil, nil, nil, fmt.Errorf("store: history migration failed: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("store: history migration failed: %w", err)
 	}
 
-	return wRepo, tRepo, hRepo, nil
+	return wRepo, tRepo, cRepo, hRepo, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -95,31 +69,38 @@ func New(dsn string) (*PostgresWorkflowRepository, *PostgresTaskRepository, *Pos
 func (s *PostgresWorkflowRepository) Migrate() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS workflow_definition (
-			name       TEXT PRIMARY KEY,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			name        TEXT PRIMARY KEY,
+			description TEXT,
+			created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
 		CREATE TABLE IF NOT EXISTS workflow_definition_step (
-			workflow_name TEXT NOT NULL,
-			step_index    INT NOT NULL,
-			step_name     TEXT NOT NULL,
+			workflow_name   TEXT NOT NULL,
+			step_index      INT NOT NULL,
+			step_name       TEXT NOT NULL,
+			task_queue      TEXT NOT NULL DEFAULT 'default',
+			timeout_seconds INT NOT NULL DEFAULT 300,
 			PRIMARY KEY (workflow_name, step_index),
+			UNIQUE (workflow_name, step_name),
 			FOREIGN KEY (workflow_name) REFERENCES workflow_definition(name) ON DELETE CASCADE
 		);
 
 		CREATE TABLE IF NOT EXISTS workflow_execution (
-			id         TEXT PRIMARY KEY,
-			name       TEXT NOT NULL,
-			input      BYTEA,
-			result     BYTEA,
-			state      TEXT NOT NULL,
-			error      TEXT,
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			id                 TEXT PRIMARY KEY,
+			workflow_name      TEXT NOT NULL,
+			task_queue         TEXT NOT NULL DEFAULT 'default',
+			input              BYTEA,
+			result             BYTEA,
+			state              TEXT NOT NULL DEFAULT 'CREATED',
+			error              TEXT,
+			current_step_index INT NOT NULL DEFAULT 0,
+			total_steps        INT NOT NULL,
+			created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			CONSTRAINT fk_def
-				FOREIGN KEY (name)
+				FOREIGN KEY (workflow_name)
 				REFERENCES workflow_definition(name)
-				ON DELETE CASCADE
+				ON DELETE RESTRICT
 		);
 	`)
 	return err
@@ -133,21 +114,21 @@ func (s *PostgresWorkflowRepository) SaveDefinition(def *workflow.WorkflowDefini
 	defer tx.Rollback()
 
 	_, err = tx.Exec(`
-		INSERT INTO workflow_definition (name, created_at)
-		VALUES ($1, $2)
+		INSERT INTO workflow_definition (name, description, created_at)
+		VALUES ($1, $2, $3)
 		ON CONFLICT (name) DO NOTHING
-	`, def.Name, def.CreatedAt)
+	`, def.Name, def.Description, def.CreatedAt)
 
 	if err != nil {
 		return fmt.Errorf("repo: failed to save workflow definition: %w", err)
 	}
 
-	for i, step := range def.Steps {
+	for _, step := range def.Steps {
 		_, err = tx.Exec(`
-			INSERT INTO workflow_definition_step (workflow_name, step_index, step_name)
-			VALUES ($1, $2, $3)
+			INSERT INTO workflow_definition_step (workflow_name, step_index, step_name, task_queue, timeout_seconds)
+			VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT (workflow_name, step_index) DO NOTHING
-		`, def.Name, i, step)
+		`, step.WorkflowName, step.StepIndex, step.StepName, step.TaskQueue, step.TimeoutSeconds)
 		if err != nil {
 			return fmt.Errorf("repo: failed to save definition step: %w", err)
 		}
@@ -158,14 +139,16 @@ func (s *PostgresWorkflowRepository) SaveDefinition(def *workflow.WorkflowDefini
 
 func (s *PostgresWorkflowRepository) FindDefinitionByName(name string) (*workflow.WorkflowDefinition, error) {
 	row := s.db.QueryRow(`
-		SELECT name, created_at
+		SELECT name, description, created_at
 		FROM workflow_definition
 		WHERE name = $1
 	`, name)
 
 	var d workflow.WorkflowDefinition
+	var desc sql.NullString
 	if err := row.Scan(
 		&d.Name,
+		&desc,
 		&d.CreatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -173,9 +156,12 @@ func (s *PostgresWorkflowRepository) FindDefinitionByName(name string) (*workflo
 		}
 		return nil, fmt.Errorf("repo: failed to find definition: %w", err)
 	}
+	if desc.Valid {
+		d.Description = desc.String
+	}
 
 	rows, err := s.db.Query(`
-		SELECT step_name
+		SELECT workflow_name, step_index, step_name, task_queue, timeout_seconds
 		FROM workflow_definition_step
 		WHERE workflow_name = $1
 		ORDER BY step_index ASC
@@ -186,11 +172,11 @@ func (s *PostgresWorkflowRepository) FindDefinitionByName(name string) (*workflo
 	defer rows.Close()
 
 	for rows.Next() {
-		var stepName string
-		if err := rows.Scan(&stepName); err != nil {
+		var step workflow.WorkflowDefinitionStep
+		if err := rows.Scan(&step.WorkflowName, &step.StepIndex, &step.StepName, &step.TaskQueue, &step.TimeoutSeconds); err != nil {
 			return nil, err
 		}
-		d.Steps = append(d.Steps, stepName)
+		d.Steps = append(d.Steps, step)
 	}
 
 	return &d, nil
@@ -198,15 +184,18 @@ func (s *PostgresWorkflowRepository) FindDefinitionByName(name string) (*workflo
 
 func (s *PostgresWorkflowRepository) SaveExecution(exec *workflow.WorkflowExecution) error {
 	_, err := s.db.Exec(`
-		INSERT INTO workflow_execution (id, name, input, result, state, error, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO workflow_execution (id, workflow_name, task_queue, input, result, state, error, current_step_index, total_steps, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`,
 		exec.ID,
-		exec.Name,
+		exec.WorkflowName,
+		exec.TaskQueue,
 		nullableBytes(exec.Input),
 		nullableBytes(exec.Result),
 		string(exec.State),
 		nullableString(exec.Error),
+		exec.CurrentStepIndex,
+		exec.TotalSteps,
 		exec.CreatedAt,
 		exec.UpdatedAt,
 	)
@@ -220,7 +209,7 @@ func (s *PostgresWorkflowRepository) SaveExecution(exec *workflow.WorkflowExecut
 
 func (s *PostgresWorkflowRepository) FindExecutionByID(id string) (*workflow.WorkflowExecution, error) {
 	row := s.db.QueryRow(`
-		SELECT id, name, input, result, state, error, created_at, updated_at
+		SELECT id, workflow_name, task_queue, input, result, state, error, current_step_index, total_steps, created_at, updated_at
 		FROM workflow_execution
 		WHERE id = $1
 	`, id)
@@ -232,11 +221,14 @@ func (s *PostgresWorkflowRepository) FindExecutionByID(id string) (*workflow.Wor
 
 	if err := row.Scan(
 		&w.ID,
-		&w.Name,
+		&w.WorkflowName,
+		&w.TaskQueue,
 		&input,
 		&result,
 		&state,
 		&execErr,
+		&w.CurrentStepIndex,
+		&w.TotalSteps,
 		&w.CreatedAt,
 		&w.UpdatedAt,
 	); err != nil {
@@ -274,55 +266,56 @@ func (s *PostgresWorkflowRepository) UpdateExecutionState(id string, state workf
 // PostgresTaskRepository
 // ---------------------------------------------------------------------------
 
-// Migrate creates the task table if it does not already exist.
-// The task table has a foreign key back to the workflow table, so
-// PostgresWorkflowRepository.Migrate() must be called first.
 func (s *PostgresTaskRepository) Migrate() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS task (
-			id            TEXT PRIMARY KEY,
+			id                    TEXT PRIMARY KEY,
 			workflow_execution_id TEXT NOT NULL,
-			task_queue    TEXT NOT NULL,
-			name          TEXT NOT NULL,
-			step_name     TEXT NOT NULL,
-			step_index    INT NOT NULL,
-
-			input         BYTEA NOT NULL,
-			output        BYTEA,
-			state         TEXT NOT NULL,
-			error         TEXT,
-
-			scheduled_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			completed_at  TIMESTAMPTZ,
-			locked_until  TIMESTAMPTZ,
+			step_index            INT NOT NULL,
+			step_name             TEXT NOT NULL,
+			task_queue            TEXT NOT NULL,
+			input                 BYTEA NOT NULL,
+			output                BYTEA,
+			state                 TEXT NOT NULL DEFAULT 'CREATED',
+			error                 TEXT,
+			scheduled_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			started_at            TIMESTAMPTZ,
+			completed_at          TIMESTAMPTZ,
+			locked_until          TIMESTAMPTZ,
+			attempt               INT NOT NULL DEFAULT 1,
+			max_attempts          INT NOT NULL DEFAULT 3,
 
 			CONSTRAINT fk_execution
 				FOREIGN KEY (workflow_execution_id)
 				REFERENCES workflow_execution(id)
 				ON DELETE CASCADE
 		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_task_exec_step ON task(workflow_execution_id, step_index);
+		CREATE INDEX IF NOT EXISTS idx_task_queue_state ON task(task_queue, state, scheduled_at);
 	`)
 	return err
 }
 
-// SaveTask inserts a new task row.
 func (s *PostgresTaskRepository) SaveTask(task *workflow.Task) error {
 	_, err := s.db.Exec(`
-		INSERT INTO task (id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO task (id, workflow_execution_id, step_index, step_name, task_queue, input, output, state, error, scheduled_at, started_at, completed_at, locked_until, attempt, max_attempts)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`,
 		task.ID,
 		task.WorkflowExecutionID,
-		task.TaskQueue,
-		task.Name,
-		task.StepName,
 		task.StepIndex,
+		task.StepName,
+		task.TaskQueue,
 		task.Input,
 		nullableBytes(task.Output),
 		string(task.State),
 		nullableString(task.Error),
 		task.ScheduledAt,
+		nullableTime(task.StartedAt),
 		nullableTime(task.CompletedAt),
+		nullableTime(task.LockedUntil),
+		task.Attempt,
+		task.MaxAttempts,
 	)
 
 	if err != nil {
@@ -332,11 +325,9 @@ func (s *PostgresTaskRepository) SaveTask(task *workflow.Task) error {
 	return nil
 }
 
-// FindPendingTasks returns all tasks for the given workflow that are in the
-// "pending" state.
 func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([]workflow.Task, error) {
 	rows, err := s.db.Query(`
-		SELECT id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, step_index, step_name, task_queue, input, output, state, error, scheduled_at, started_at, completed_at, locked_until, attempt, max_attempts
 		FROM task
 		WHERE workflow_execution_id = $1
 		  AND state = 'CREATED'
@@ -352,21 +343,24 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([
 		var t workflow.Task
 		var state string
 		var taskErr sql.NullString
-		var completedAt sql.NullTime
+		var startedAt, completedAt, lockedUntil sql.NullTime
 
 		if err := rows.Scan(
 			&t.ID,
 			&t.WorkflowExecutionID,
-			&t.TaskQueue,
-			&t.Name,
-			&t.StepName,
 			&t.StepIndex,
+			&t.StepName,
+			&t.TaskQueue,
 			&t.Input,
 			&t.Output,
 			&state,
 			&taskErr,
 			&t.ScheduledAt,
+			&startedAt,
 			&completedAt,
+			&lockedUntil,
+			&t.Attempt,
+			&t.MaxAttempts,
 		); err != nil {
 			return nil, fmt.Errorf("repo: failed to scan task row: %w", err)
 		}
@@ -375,8 +369,14 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([
 		if taskErr.Valid {
 			t.Error = taskErr.String
 		}
+		if startedAt.Valid {
+			t.StartedAt = startedAt.Time
+		}
 		if completedAt.Valid {
 			t.CompletedAt = completedAt.Time
+		}
+		if lockedUntil.Valid {
+			t.LockedUntil = lockedUntil.Time
 		}
 
 		tasks = append(tasks, t)
@@ -389,7 +389,6 @@ func (s *PostgresTaskRepository) FindPendingTasks(workflowExecutionID string) ([
 	return tasks, nil
 }
 
-// UpdateState sets the state column for the given task ID.
 func (s *PostgresTaskRepository) UpdateState(taskID string, state workflow.State) error {
 	_, err := s.db.Exec(`
 		UPDATE task
@@ -404,10 +403,9 @@ func (s *PostgresTaskRepository) UpdateState(taskID string, state workflow.State
 	return nil
 }
 
-// FindTaskByID returns a task by its ID.
 func (s *PostgresTaskRepository) FindTaskByID(taskID string) (*workflow.Task, error) {
 	row := s.db.QueryRow(`
-		SELECT id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, step_index, step_name, task_queue, input, output, state, error, scheduled_at, started_at, completed_at, locked_until, attempt, max_attempts
 		FROM task
 		WHERE id = $1
 	`, taskID)
@@ -415,21 +413,24 @@ func (s *PostgresTaskRepository) FindTaskByID(taskID string) (*workflow.Task, er
 	var t workflow.Task
 	var state string
 	var taskErr sql.NullString
-	var completedAt sql.NullTime
+	var startedAt, completedAt, lockedUntil sql.NullTime
 
 	if err := row.Scan(
 		&t.ID,
 		&t.WorkflowExecutionID,
-		&t.TaskQueue,
-		&t.Name,
-		&t.StepName,
 		&t.StepIndex,
+		&t.StepName,
+		&t.TaskQueue,
 		&t.Input,
 		&t.Output,
 		&state,
 		&taskErr,
 		&t.ScheduledAt,
+		&startedAt,
 		&completedAt,
+		&lockedUntil,
+		&t.Attempt,
+		&t.MaxAttempts,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("repo: task not found")
@@ -441,14 +442,19 @@ func (s *PostgresTaskRepository) FindTaskByID(taskID string) (*workflow.Task, er
 	if taskErr.Valid {
 		t.Error = taskErr.String
 	}
+	if startedAt.Valid {
+		t.StartedAt = startedAt.Time
+	}
 	if completedAt.Valid {
 		t.CompletedAt = completedAt.Time
+	}
+	if lockedUntil.Valid {
+		t.LockedUntil = lockedUntil.Time
 	}
 
 	return &t, nil
 }
 
-// FindAndLockPendingTask returns the oldest pending task for a given queue, updating its state to RUNNING.
 func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*workflow.Task, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -457,7 +463,7 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	defer tx.Rollback()
 
 	row := tx.QueryRow(`
-		SELECT id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, step_index, step_name, task_queue, input, output, state, error, scheduled_at, started_at, completed_at, locked_until, attempt, max_attempts
 		FROM task
 		WHERE task_queue = $1 AND state = 'CREATED' AND (locked_until IS NULL OR locked_until < NOW())
 		ORDER BY scheduled_at ASC
@@ -468,21 +474,24 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	var t workflow.Task
 	var state string
 	var taskErr sql.NullString
-	var completedAt sql.NullTime
+	var startedAt, completedAt, lockedUntil sql.NullTime
 
 	if err := row.Scan(
 		&t.ID,
 		&t.WorkflowExecutionID,
-		&t.TaskQueue,
-		&t.Name,
-		&t.StepName,
 		&t.StepIndex,
+		&t.StepName,
+		&t.TaskQueue,
 		&t.Input,
 		&t.Output,
 		&state,
 		&taskErr,
 		&t.ScheduledAt,
+		&startedAt,
 		&completedAt,
+		&lockedUntil,
+		&t.Attempt,
+		&t.MaxAttempts,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // No tasks available
@@ -494,15 +503,23 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	if taskErr.Valid {
 		t.Error = taskErr.String
 	}
+	if startedAt.Valid {
+		t.StartedAt = startedAt.Time
+	} else {
+		t.StartedAt = time.Now()
+	}
 	if completedAt.Valid {
 		t.CompletedAt = completedAt.Time
+	}
+	if lockedUntil.Valid {
+		t.LockedUntil = lockedUntil.Time
 	}
 
 	_, err = tx.Exec(`
 		UPDATE task
-		SET state = 'RUNNING', locked_until = NOW() + INTERVAL '5 minutes'
-		WHERE id = $1
-	`, t.ID)
+		SET state = 'RUNNING', started_at = $1, locked_until = NOW() + INTERVAL '5 minutes'
+		WHERE id = $2
+	`, t.StartedAt, t.ID)
 	if err != nil {
 		return nil, fmt.Errorf("repo: failed to update task to running: %w", err)
 	}
@@ -514,7 +531,6 @@ func (s *PostgresTaskRepository) FindAndLockPendingTask(taskQueue string) (*work
 	return &t, nil
 }
 
-// UpdateTaskComplete marks a task as completed or failed and saves its output.
 func (s *PostgresTaskRepository) UpdateTaskComplete(taskID string, result []byte, errString string) error {
 	state := workflow.StateCompleted
 	if errString != "" {
@@ -534,10 +550,9 @@ func (s *PostgresTaskRepository) UpdateTaskComplete(taskID string, result []byte
 	return nil
 }
 
-// FindLatestTask finds the most recently scheduled task for a workflow.
 func (s *PostgresTaskRepository) FindLatestTask(workflowExecutionID string) (*workflow.Task, error) {
 	row := s.db.QueryRow(`
-		SELECT id, workflow_execution_id, task_queue, name, step_name, step_index, input, output, state, error, scheduled_at, completed_at
+		SELECT id, workflow_execution_id, step_index, step_name, task_queue, input, output, state, error, scheduled_at, started_at, completed_at, locked_until, attempt, max_attempts
 		FROM task
 		WHERE workflow_execution_id = $1
 		ORDER BY scheduled_at DESC
@@ -547,21 +562,24 @@ func (s *PostgresTaskRepository) FindLatestTask(workflowExecutionID string) (*wo
 	var t workflow.Task
 	var state string
 	var taskErr sql.NullString
-	var completedAt sql.NullTime
+	var startedAt, completedAt, lockedUntil sql.NullTime
 
 	if err := row.Scan(
 		&t.ID,
 		&t.WorkflowExecutionID,
-		&t.TaskQueue,
-		&t.Name,
-		&t.StepName,
 		&t.StepIndex,
+		&t.StepName,
+		&t.TaskQueue,
 		&t.Input,
 		&t.Output,
 		&state,
 		&taskErr,
 		&t.ScheduledAt,
+		&startedAt,
 		&completedAt,
+		&lockedUntil,
+		&t.Attempt,
+		&t.MaxAttempts,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -573,25 +591,103 @@ func (s *PostgresTaskRepository) FindLatestTask(workflowExecutionID string) (*wo
 	if taskErr.Valid {
 		t.Error = taskErr.String
 	}
+	if startedAt.Valid {
+		t.StartedAt = startedAt.Time
+	}
 	if completedAt.Valid {
 		t.CompletedAt = completedAt.Time
+	}
+	if lockedUntil.Valid {
+		t.LockedUntil = lockedUntil.Time
 	}
 
 	return &t, nil
 }
 
-// ResetTimedOutTasks sets RUNNING tasks that have exceeded their locked_until back to CREATED
 func (s *PostgresTaskRepository) ResetTimedOutTasks() error {
 	_, err := s.db.Exec(`
 		UPDATE task
-		SET state = 'CREATED', locked_until = NULL
-		WHERE state = 'RUNNING' AND locked_until < NOW()
+		SET state = 'CREATED', locked_until = NULL, attempt = attempt + 1
+		WHERE state = 'RUNNING' AND locked_until < NOW() AND attempt < max_attempts
 	`)
 	if err != nil {
 		return fmt.Errorf("repo: failed to reset timed out tasks: %w", err)
 	}
+
+	_, err = s.db.Exec(`
+		UPDATE task
+		SET state = 'FAILED', error = 'task timed out and reached max attempts', completed_at = NOW()
+		WHERE state = 'RUNNING' AND locked_until < NOW() AND attempt >= max_attempts
+	`)
+	if err != nil {
+		return fmt.Errorf("repo: failed to fail timed out tasks: %w", err)
+	}
+
 	return nil
 }
+
+// ---------------------------------------------------------------------------
+// PostgresCheckpointRepository
+// ---------------------------------------------------------------------------
+
+func (s *PostgresCheckpointRepository) Migrate() error {
+	_, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS checkpoint (
+			id                    SERIAL PRIMARY KEY,
+			workflow_execution_id TEXT NOT NULL,
+			step_index            INT NOT NULL,
+			state_snapshot        BYTEA NOT NULL,
+			created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT fk_checkpoint_execution
+				FOREIGN KEY (workflow_execution_id)
+				REFERENCES workflow_execution(id)
+				ON DELETE CASCADE
+		);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_checkpoint_exec_step ON checkpoint(workflow_execution_id, step_index);
+	`)
+	return err
+}
+
+func (s *PostgresCheckpointRepository) SaveCheckpoint(checkpoint *workflow.Checkpoint) error {
+	err := s.db.QueryRow(`
+		INSERT INTO checkpoint (workflow_execution_id, step_index, state_snapshot, created_at)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (workflow_execution_id, step_index) DO UPDATE SET state_snapshot = EXCLUDED.state_snapshot
+		RETURNING id
+	`, checkpoint.WorkflowExecutionID, checkpoint.StepIndex, checkpoint.StateSnapshot, checkpoint.CreatedAt).Scan(&checkpoint.ID)
+
+	if err != nil {
+		return fmt.Errorf("repo: failed to save checkpoint: %w", err)
+	}
+
+	return nil
+}
+
+func (s *PostgresCheckpointRepository) GetLatestCheckpoint(workflowExecutionID string) (*workflow.Checkpoint, error) {
+	row := s.db.QueryRow(`
+		SELECT id, workflow_execution_id, step_index, state_snapshot, created_at
+		FROM checkpoint
+		WHERE workflow_execution_id = $1
+		ORDER BY step_index DESC
+		LIMIT 1
+	`, workflowExecutionID)
+
+	var c workflow.Checkpoint
+	if err := row.Scan(
+		&c.ID,
+		&c.WorkflowExecutionID,
+		&c.StepIndex,
+		&c.StateSnapshot,
+		&c.CreatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // No checkpoint yet
+		}
+		return nil, fmt.Errorf("repo: failed to get latest checkpoint: %w", err)
+	}
+	return &c, nil
+}
+
 
 // ---------------------------------------------------------------------------
 // PostgresHistoryRepository
@@ -600,27 +696,30 @@ func (s *PostgresTaskRepository) ResetTimedOutTasks() error {
 func (s *PostgresHistoryRepository) Migrate() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS history_event (
-			id            SERIAL PRIMARY KEY,
+			id                    SERIAL PRIMARY KEY,
 			workflow_execution_id TEXT NOT NULL,
-			event_type    TEXT NOT NULL,
-			activity_name TEXT NOT NULL,
-			result        BYTEA,
-			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			step_index            INT,
+			step_name             TEXT,
+			event_type            TEXT NOT NULL,
+			payload               BYTEA,
+			error                 TEXT,
+			created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			CONSTRAINT fk_history_execution
 				FOREIGN KEY (workflow_execution_id)
 				REFERENCES workflow_execution(id)
 				ON DELETE CASCADE
 		);
+		CREATE INDEX IF NOT EXISTS idx_history_exec_id ON history_event(workflow_execution_id, id);
 	`)
 	return err
 }
 
 func (s *PostgresHistoryRepository) SaveEvent(event *workflow.HistoryEvent) error {
 	err := s.db.QueryRow(`
-		INSERT INTO history_event (workflow_execution_id, event_type, activity_name, result, created_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO history_event (workflow_execution_id, step_index, step_name, event_type, payload, error, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
-	`, event.WorkflowExecutionID, event.EventType, event.ActivityName, nullableBytes(event.Result), event.CreatedAt).Scan(&event.EventID)
+	`, event.WorkflowExecutionID, event.StepIndex, event.StepName, event.EventType, nullableBytes(event.Payload), nullableString(event.Error), event.CreatedAt).Scan(&event.EventID)
 
 	if err != nil {
 		return fmt.Errorf("repo: failed to save history event: %w", err)
@@ -631,7 +730,7 @@ func (s *PostgresHistoryRepository) SaveEvent(event *workflow.HistoryEvent) erro
 
 func (s *PostgresHistoryRepository) GetHistory(workflowExecutionID string) ([]workflow.HistoryEvent, error) {
 	rows, err := s.db.Query(`
-		SELECT id, workflow_execution_id, event_type, activity_name, result, created_at
+		SELECT id, workflow_execution_id, step_index, step_name, event_type, payload, error, created_at
 		FROM history_event
 		WHERE workflow_execution_id = $1
 		ORDER BY id ASC
@@ -644,18 +743,37 @@ func (s *PostgresHistoryRepository) GetHistory(workflowExecutionID string) ([]wo
 	var events []workflow.HistoryEvent
 	for rows.Next() {
 		var e workflow.HistoryEvent
-		var result []byte
+		var payload []byte
+		var stepIndex sql.NullInt32
+		var stepName sql.NullString
+		var eventErr sql.NullString
+
 		if err := rows.Scan(
 			&e.EventID,
 			&e.WorkflowExecutionID,
+			&stepIndex,
+			&stepName,
 			&e.EventType,
-			&e.ActivityName,
-			&result,
+			&payload,
+			&eventErr,
 			&e.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("repo: failed to scan history row: %w", err)
 		}
-		e.Result = result
+		
+		if stepIndex.Valid {
+			v := int(stepIndex.Int32)
+			e.StepIndex = &v
+		}
+		if stepName.Valid {
+			v := stepName.String
+			e.StepName = &v
+		}
+		if eventErr.Valid {
+			e.Error = eventErr.String
+		}
+
+		e.Payload = payload
 		events = append(events, e)
 	}
 
@@ -684,4 +802,3 @@ func nullableBytes(b []byte) []byte {
 func nullableTime(t time.Time) sql.NullTime {
 	return sql.NullTime{Time: t, Valid: !t.IsZero()}
 }
-
