@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	WorkflowService_RegisterWorkflow_FullMethodName      = "/workflow.WorkflowService/RegisterWorkflow"
+	WorkflowService_AddStep_FullMethodName               = "/workflow.WorkflowService/AddStep"
 	WorkflowService_StartWorkflow_FullMethodName         = "/workflow.WorkflowService/StartWorkflow"
 	WorkflowService_StreamTasks_FullMethodName           = "/workflow.WorkflowService/StreamTasks"
 	WorkflowService_CompleteTask_FullMethodName          = "/workflow.WorkflowService/CompleteTask"
@@ -33,6 +34,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type WorkflowServiceClient interface {
 	RegisterWorkflow(ctx context.Context, in *RegisterWorkflowRequest, opts ...grpc.CallOption) (*RegisterWorkflowResponse, error)
+	AddStep(ctx context.Context, in *WorkflowDefinitionStepRequest, opts ...grpc.CallOption) (*WorkflowDefinitionStepResponce, error)
 	StartWorkflow(ctx context.Context, in *StartWorkflowRequest, opts ...grpc.CallOption) (*StartWorkflowResponse, error)
 	StreamTasks(ctx context.Context, in *StreamTasksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamTaskResponse], error)
 	CompleteTask(ctx context.Context, in *CompleteTaskRequest, opts ...grpc.CallOption) (*CompleteTaskResponse, error)
@@ -53,6 +55,16 @@ func (c *workflowServiceClient) RegisterWorkflow(ctx context.Context, in *Regist
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RegisterWorkflowResponse)
 	err := c.cc.Invoke(ctx, WorkflowService_RegisterWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) AddStep(ctx context.Context, in *WorkflowDefinitionStepRequest, opts ...grpc.CallOption) (*WorkflowDefinitionStepResponce, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkflowDefinitionStepResponce)
+	err := c.cc.Invoke(ctx, WorkflowService_AddStep_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +154,7 @@ type WorkflowService_StreamWorkflowHistoryClient = grpc.ServerStreamingClient[Hi
 // for forward compatibility.
 type WorkflowServiceServer interface {
 	RegisterWorkflow(context.Context, *RegisterWorkflowRequest) (*RegisterWorkflowResponse, error)
+	AddStep(context.Context, *WorkflowDefinitionStepRequest) (*WorkflowDefinitionStepResponce, error)
 	StartWorkflow(context.Context, *StartWorkflowRequest) (*StartWorkflowResponse, error)
 	StreamTasks(*StreamTasksRequest, grpc.ServerStreamingServer[StreamTaskResponse]) error
 	CompleteTask(context.Context, *CompleteTaskRequest) (*CompleteTaskResponse, error)
@@ -160,6 +173,9 @@ type UnimplementedWorkflowServiceServer struct{}
 
 func (UnimplementedWorkflowServiceServer) RegisterWorkflow(context.Context, *RegisterWorkflowRequest) (*RegisterWorkflowResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RegisterWorkflow not implemented")
+}
+func (UnimplementedWorkflowServiceServer) AddStep(context.Context, *WorkflowDefinitionStepRequest) (*WorkflowDefinitionStepResponce, error) {
+	return nil, status.Error(codes.Unimplemented, "method AddStep not implemented")
 }
 func (UnimplementedWorkflowServiceServer) StartWorkflow(context.Context, *StartWorkflowRequest) (*StartWorkflowResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method StartWorkflow not implemented")
@@ -214,6 +230,24 @@ func _WorkflowService_RegisterWorkflow_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(WorkflowServiceServer).RegisterWorkflow(ctx, req.(*RegisterWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_AddStep_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkflowDefinitionStepRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).AddStep(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_AddStep_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).AddStep(ctx, req.(*WorkflowDefinitionStepRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -322,6 +356,10 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RegisterWorkflow",
 			Handler:    _WorkflowService_RegisterWorkflow_Handler,
+		},
+		{
+			MethodName: "AddStep",
+			Handler:    _WorkflowService_AddStep_Handler,
 		},
 		{
 			MethodName: "StartWorkflow",
