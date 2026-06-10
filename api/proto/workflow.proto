@@ -18,7 +18,6 @@ service WorkflowService {
 
 message RegisterWorkflowRequest {
   string name = 1;
-  repeated string steps = 2;
 }
 
 message RegisterWorkflowResponse {

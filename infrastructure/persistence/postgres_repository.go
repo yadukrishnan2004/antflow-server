@@ -123,17 +123,6 @@ func (s *PostgresWorkflowRepository) SaveDefinition(def *workflow.WorkflowDefini
 		return fmt.Errorf("repo: failed to save workflow definition: %w", err)
 	}
 
-	for _, step := range def.Steps {
-		_, err = tx.Exec(`
-			INSERT INTO workflow_definition_step (workflow_name, step_index, step_name, task_queue, timeout_seconds)
-			VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (workflow_name, step_index) DO NOTHING
-		`, step.WorkflowName, step.StepIndex, step.StepName, step.TaskQueue, step.TimeoutSeconds)
-		if err != nil {
-			return fmt.Errorf("repo: failed to save definition step: %w", err)
-		}
-	}
-
 	return tx.Commit()
 }
 

@@ -16,6 +16,7 @@ type WorkflowDefinition struct {
 	Name        string
 	Description string
 	Steps       []WorkflowDefinitionStep
+	NextIndex   int
 	CreatedAt   time.Time
 }
 

@@ -39,12 +39,25 @@ func NewWorkflowService(
         historyRepo:    hRepo,
     }
 }
-
+//===============================================================================================================================================================================
 func (i *workflowInteractor) RegisterWorkflow(name string) (*workflow.WorkflowDefinition, error) {
+	if name == "" {
+        return nil, fmt.Errorf("workflow name cannot be empty")
+    }
 	def := &workflow.WorkflowDefinition{
 		Name:      name,
-		CreatedAt: time.Time{}, // Just placeholder, db sets it or we can set it
+		CreatedAt: time.Now(), 
 	}
+
+	existing, errs := i.workflowRepo.FindDefinitionByName(name)
+    if errs != nil {
+        return nil, fmt.Errorf("failed to check existing workflow: %w", errs)
+    }
+
+	if existing != nil {
+            return nil, fmt.Errorf("%w: cannot re-register", name,)
+    }
+
 
 	err := i.workflowRepo.SaveDefinition(def)
 	if err != nil {
@@ -53,7 +66,7 @@ func (i *workflowInteractor) RegisterWorkflow(name string) (*workflow.WorkflowDe
 
 	return def, nil
 }
-
+//===============================================================================================================================================================================
 func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.Task, error) {
 	// 1. Ensure definition exists
 	def, err := i.workflowRepo.FindDefinitionByName(workflowName)
@@ -108,15 +121,19 @@ func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string
 	return t, nil
 }
 
+//===============================================================================================================================================================================
+
 func (i *workflowInteractor) PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error) {
 	return i.taskRepo.FindAndLockPendingTask(taskQueue)
 }
 
-
+//===============================================================================================================================================================================
 
 func (i *workflowInteractor) GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.WorkflowExecution, error) {
     return i.workflowRepo.FindExecutionByID(workflowID)
 }
+
+//===============================================================================================================================================================================
 
 func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID string) error {
 	exec, err := i.workflowRepo.FindExecutionByID(workflowID)
@@ -130,11 +147,11 @@ func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID stri
 
 	return i.workflowRepo.UpdateExecutionState(workflowID, workflow.StateCancelled)
 }
-
+//===============================================================================================================================================================================
 func (i *workflowInteractor) GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error) {
 	return i.historyRepo.GetHistory(workflowID)
 }
-
+//===============================================================================================================================================================================
 func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error {
 	if err := i.taskRepo.UpdateTaskComplete(taskID, result, errString);err != nil {
 		return fmt.Errorf("failed to complete task: %w", err)
@@ -252,3 +269,4 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 
     return nil
 }
+//===============================================================================================================================================================================

@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/api/grpc/pb"
@@ -22,23 +23,30 @@ func NewWorkflowHandler(service usecase.WorkflowService) *WorkflowHandler {
 	}
 }
 
+// ====================================================================================================================================================
 func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.RegisterWorkflowRequest) (*pb.RegisterWorkflowResponse, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "workflow name is required")
-	}
+    if req.Name == "" {
+        return nil, status.Error(codes.InvalidArgument, "workflow name is required")
+    }
 
-	wf, err := h.service.RegisterWorkflow(req.Name)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to register workflow: %v", err)
-	}
 
-	return &pb.RegisterWorkflowResponse{
-		Id:        wf.Name, // Using name as ID for definition
-		Name:      wf.Name,
-		CreatedAt: timestamppb.New(wf.CreatedAt),
-	}, nil
+    wf, err := h.service.RegisterWorkflow(req.Name)
+    if err != nil {
+        // Step mismatch is a caller error, not an internal server error
+        if strings.Contains(err.Error(), "already registered") ||
+            strings.Contains(err.Error(), "mismatch") {
+            return nil, status.Errorf(codes.AlreadyExists, "%v", err)
+        }
+        return nil, status.Errorf(codes.Internal, "failed to register workflow: %v", err)
+    }
+
+    return &pb.RegisterWorkflowResponse{
+        Id:        wf.Name,
+        Name:      wf.Name,
+        CreatedAt: timestamppb.New(wf.CreatedAt),
+    }, nil
 }
-
+// =====================================================================================================================================================
 func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkflowRequest) (*pb.StartWorkflowResponse, error) {
 	if req.WorkflowId == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow id is required")
@@ -61,6 +69,7 @@ func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkfl
 	}, nil
 }
 
+// =====================================================================================================================================================
 func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.WorkflowService_StreamTasksServer) error {
 	taskQueue := req.TaskQueue
 	if taskQueue == "" {
@@ -98,6 +107,7 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 	}
 }
 
+// =====================================================================================================================================================
 func (h *WorkflowHandler) CompleteTask(ctx context.Context, req *pb.CompleteTaskRequest) (*pb.CompleteTaskResponse, error) {
 	if req.TaskId == "" {
 		return nil, status.Error(codes.InvalidArgument, "task id is required")
@@ -111,6 +121,7 @@ func (h *WorkflowHandler) CompleteTask(ctx context.Context, req *pb.CompleteTask
 	return &pb.CompleteTaskResponse{Success: true}, nil
 }
 
+// =====================================================================================================================================================
 func (h *WorkflowHandler) GetWorkflowResult(ctx context.Context, req *pb.GetWorkflowResultRequest) (*pb.GetWorkflowResultResponse, error) {
 	if req.WorkflowId == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow id is required")
@@ -125,12 +136,13 @@ func (h *WorkflowHandler) GetWorkflowResult(ctx context.Context, req *pb.GetWork
 	}
 
 	return &pb.GetWorkflowResultResponse{
-    State:  string(exec.State),
-    Result: exec.Result,
-    Error:  exec.Error,
-}, nil
+		State:  string(exec.State),
+		Result: exec.Result,
+		Error:  exec.Error,
+	}, nil
 }
 
+// =====================================================================================================================================================
 func (h *WorkflowHandler) CancelWorkflow(ctx context.Context, req *pb.CancelWorkflowRequest) (*pb.CancelWorkflowResponse, error) {
 	if req.WorkflowId == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow id is required")
@@ -144,6 +156,7 @@ func (h *WorkflowHandler) CancelWorkflow(ctx context.Context, req *pb.CancelWork
 	return &pb.CancelWorkflowResponse{Success: true}, nil
 }
 
+// =====================================================================================================================================================
 func (h *WorkflowHandler) StreamWorkflowHistory(req *pb.StreamWorkflowHistoryRequest, stream pb.WorkflowService_StreamWorkflowHistoryServer) error {
 	if req.WorkflowId == "" {
 		return status.Error(codes.InvalidArgument, "workflow id is required")
@@ -193,3 +206,4 @@ func (h *WorkflowHandler) StreamWorkflowHistory(req *pb.StreamWorkflowHistoryReq
 		}
 	}
 }
+//=============================================================================================================================================================================
