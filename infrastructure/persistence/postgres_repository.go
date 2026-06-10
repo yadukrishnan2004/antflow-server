@@ -262,6 +262,54 @@ func (s *PostgresWorkflowRepository) UpdateExecutionState(id string, state workf
 	return nil
 }
 
+func (s *PostgresWorkflowRepository) FindStep(workflowName string, stepIndex int) (*workflow.WorkflowDefinitionStep, error) {
+	row := s.db.QueryRow(`
+		SELECT workflow_name, step_index, step_name, task_queue, timeout_seconds
+		FROM workflow_definition_step
+		WHERE workflow_name = $1 AND step_index = $2
+	`,workflowName, stepIndex)
+
+	var step workflow.WorkflowDefinitionStep
+
+	if err := row.Scan(
+		&step.WorkflowName, &step.StepIndex, &step.StepName,
+        &step.TaskQueue, &step.TimeoutSeconds,
+	);err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+            return nil, fmt.Errorf("repo: step %d not found for workflow %s", stepIndex, workflowName)
+        }
+		return nil, fmt.Errorf("repo: failed to find step: %w", err)
+	}
+	return &step, nil
+}
+
+func (s *PostgresWorkflowRepository) UpdateStepCursor(id string, stepIndex int) error {
+	_, err := s.db.Exec(`
+        UPDATE workflow_execution
+        SET current_step_index = $1, updated_at = NOW()
+        WHERE id = $2
+    `, stepIndex, id)
+    if err != nil {
+        return fmt.Errorf("repo: failed to update step cursor: %w", err)
+    }
+    return nil
+}
+
+func (s *PostgresWorkflowRepository) SaveResult(id string, result []byte) error {
+	_ , err := s.db.Exec(`
+		UPDATE workflow_execution
+		SET result = $1 , updated_at = NOW()
+		WHERE id = $2	
+	`, nullableBytes(result),id)
+
+    if err != nil {
+        return fmt.Errorf("repo: failed to save execution result: %w", err)
+    }
+    return nil
+}
+
+
+
 // ---------------------------------------------------------------------------
 // PostgresTaskRepository
 // ---------------------------------------------------------------------------

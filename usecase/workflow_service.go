@@ -14,23 +14,30 @@ type WorkflowService interface {
 	StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.Task, error)
 	PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error)
 	CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error
-	GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.Task, error)
+	GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.WorkflowExecution, error)
 	CancelWorkflow(ctx context.Context, workflowID string) error
 	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)
 }
 
 type workflowInteractor struct {
-	workflowRepo workflow.WorkflowRepository
-	taskRepo     workflow.TaskRepository
-	historyRepo  workflow.HistoryRepository
+    workflowRepo   workflow.WorkflowRepository
+    taskRepo       workflow.TaskRepository
+    checkpointRepo workflow.CheckpointRepository  
+    historyRepo    workflow.HistoryRepository
 }
 
-func NewWorkflowService(wRepo workflow.WorkflowRepository, tRepo workflow.TaskRepository, hRepo workflow.HistoryRepository) WorkflowService {
-	return &workflowInteractor{
-		workflowRepo: wRepo,
-		taskRepo:     tRepo,
-		historyRepo:  hRepo,
-	}
+func NewWorkflowService(
+    wRepo workflow.WorkflowRepository,
+    tRepo workflow.TaskRepository,
+    cRepo workflow.CheckpointRepository,  
+    hRepo workflow.HistoryRepository,
+) WorkflowService {
+    return &workflowInteractor{
+        workflowRepo:   wRepo,
+        taskRepo:       tRepo,
+        checkpointRepo: cRepo,
+        historyRepo:    hRepo,
+    }
 }
 
 func (i *workflowInteractor) RegisterWorkflow(name string) (*workflow.WorkflowDefinition, error) {
@@ -105,45 +112,10 @@ func (i *workflowInteractor) PollTask(ctx context.Context, taskQueue string) (*w
 	return i.taskRepo.FindAndLockPendingTask(taskQueue)
 }
 
-func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error {
-	if err := i.taskRepo.UpdateTaskComplete(taskID, result, errString); err != nil {
-		return err
-	}
 
-	t, err := i.taskRepo.FindTaskByID(taskID)
-	if err != nil {
-		return err
-	}
 
-	// Update execution state to completed/failed
-	execState := workflow.StateCompleted
-	eventType := "WorkflowExecutionCompleted"
-	if errString != "" {
-		execState = workflow.StateFailed
-		eventType = "WorkflowExecutionFailed"
-	}
-
-	if err := i.workflowRepo.UpdateExecutionState(t.WorkflowExecutionID, execState); err != nil {
-		return err
-	}
-
-	// Save history event
-	event := &workflow.HistoryEvent{
-		WorkflowExecutionID: t.WorkflowExecutionID,
-		EventType:           eventType,
-		StepName:            &t.StepName,
-		StepIndex:           &t.StepIndex,
-		Payload:             result,
-		CreatedAt:           time.Now(),
-	}
-	if errString != "" {
-		event.Error = errString
-	}
-	return i.historyRepo.SaveEvent(event)
-}
-
-func (i *workflowInteractor) GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.Task, error) {
-	return i.taskRepo.FindLatestTask(workflowID)
+func (i *workflowInteractor) GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.WorkflowExecution, error) {
+    return i.workflowRepo.FindExecutionByID(workflowID)
 }
 
 func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID string) error {
@@ -161,4 +133,122 @@ func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID stri
 
 func (i *workflowInteractor) GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error) {
 	return i.historyRepo.GetHistory(workflowID)
+}
+
+func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error {
+	if err := i.taskRepo.UpdateTaskComplete(taskID, result, errString);err != nil {
+		return fmt.Errorf("failed to complete task: %w", err)
+	}
+
+	t, err := i.taskRepo.FindTaskByID(taskID)
+	if err != nil {
+        return fmt.Errorf("failed to find task: %w", err)
+    }
+
+	exec, err := i.workflowRepo.FindExecutionByID(t.WorkflowExecutionID)
+	if err != nil {
+        return fmt.Errorf("failed to find execution: %w", err)
+    }
+
+	if errString != "" {
+		if t.Attempt < t.MaxAttempts {
+			i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+                WorkflowExecutionID: exec.ID,
+                StepIndex:           &t.StepIndex,
+                StepName:            &t.StepName,
+                EventType:           "StepRetrying",
+                Error:               errString,
+                CreatedAt:           time.Now(),
+            })
+			return nil
+		}
+		i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateFailed)
+		i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				StepIndex:           &t.StepIndex,
+				StepName:            &t.StepName,
+				EventType:           "StepFailed",
+				Error:               errString,
+				CreatedAt:           time.Now(),
+		})
+	
+		i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				EventType:           "WorkflowExecutionFailed",
+				Error:               errString,
+				CreatedAt:           time.Now(),
+			})
+			return nil
+	}
+
+	i.checkpointRepo.SaveCheckpoint(&workflow.Checkpoint{
+        WorkflowExecutionID: exec.ID,
+        StepIndex:           t.StepIndex,
+        StateSnapshot:       result,
+        CreatedAt:           time.Now(),
+    })
+
+    // 6. Write StepCompleted history
+    i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+        WorkflowExecutionID: exec.ID,
+        StepIndex:           &t.StepIndex,
+        StepName:            &t.StepName,
+        EventType:           "StepCompleted",
+        Payload:             result,
+        CreatedAt:           time.Now(),
+    })
+
+	 nextIndex := t.StepIndex + 1
+
+    if nextIndex >= exec.TotalSteps {
+        // All steps done
+        i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateCompleted)
+        i.workflowRepo.SaveResult(exec.ID, result)
+        i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+            WorkflowExecutionID: exec.ID,
+            EventType:           "WorkflowExecutionCompleted",
+            Payload:             result,
+            CreatedAt:           time.Now(),
+        })
+        return nil
+    }
+
+	nextStep, err := i.workflowRepo.FindStep(exec.WorkflowName, nextIndex)
+    if err != nil {
+        return fmt.Errorf("failed to find next step definition: %w", err)
+    }
+
+	resolvedQueue := nextStep.TaskQueue
+    if resolvedQueue == "" {
+        resolvedQueue = exec.TaskQueue
+    }
+
+	nextTask := &workflow.Task{
+        ID:                  fmt.Sprintf("task-%s", uuid.New().String()),
+        WorkflowExecutionID: exec.ID,
+        StepIndex:           nextIndex,
+        StepName:            nextStep.StepName,
+        TaskQueue:           resolvedQueue,
+        Input:               result,          // ← chain
+        State:               workflow.StateCreated,
+        Attempt:             1,
+        MaxAttempts:         3,
+        ScheduledAt:         time.Now(),
+    }
+	if err := i.taskRepo.SaveTask(nextTask); err != nil {
+        return fmt.Errorf("failed to save next task: %w", err)
+    }
+
+	if err := i.workflowRepo.UpdateStepCursor(exec.ID, nextIndex); err != nil {
+        return fmt.Errorf("failed to advance step cursor: %w", err)
+    }
+	i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+        WorkflowExecutionID: exec.ID,
+        StepIndex:           &nextIndex,
+        StepName:            &nextStep.StepName,
+        EventType:           "StepScheduled",
+        CreatedAt:           time.Now(),
+    })
+
+    return nil
 }

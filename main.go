@@ -15,13 +15,13 @@ import (
 func main() {
 	// Connect to PostgreSQL database
 	dsn := "postgres://postgres:1234@localhost:5432/postgres?sslmode=disable"
-	wRepo, tRepo, _, hRepo, err := persistence.New(dsn)
+	wRepo, tRepo, cRepo, hRepo, err := persistence.New(dsn)
 	if err != nil {
 		log.Fatalf("failed to initialize persistence layer: %v", err)
 	}
 
 	// Initialize the Usecase
-	workflowService := usecase.NewWorkflowService(wRepo, tRepo, hRepo)
+	workflowService := usecase.NewWorkflowService(wRepo, tRepo, cRepo, hRepo)
 
 	// Initialize the gRPC Handler
 	workflowHandler := appgrpc.NewWorkflowHandler(workflowService)

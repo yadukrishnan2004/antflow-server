@@ -1,13 +1,16 @@
 package workflow
 
 type WorkflowRepository interface {
-	SaveDefinition(def *WorkflowDefinition) error
-	FindDefinitionByName(name string) (*WorkflowDefinition, error)
-	
-	SaveExecution(exec *WorkflowExecution) error
-	FindExecutionByID(id string) (*WorkflowExecution, error)
-	UpdateExecutionState(id string, state State) error
-	Migrate() error
+    SaveDefinition(def *WorkflowDefinition) error
+    FindDefinitionByName(name string) (*WorkflowDefinition, error)
+    FindStep(workflowName string, stepIndex int) (*WorkflowDefinitionStep, error)
+    
+    SaveExecution(exec *WorkflowExecution) error
+    FindExecutionByID(id string) (*WorkflowExecution, error)
+    UpdateExecutionState(id string, state State) error
+    UpdateStepCursor(id string, stepIndex int) error   
+    SaveResult(id string, result []byte) error          
+    Migrate() error
 }
 
 type TaskRepository interface {
