@@ -25,10 +25,8 @@ const (
 type WorkflowDefinitionStepRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowName   string                 `protobuf:"bytes,1,opt,name=WorkflowName,proto3" json:"WorkflowName,omitempty"`
-	StepIndex      int64                  `protobuf:"varint,2,opt,name=StepIndex,proto3" json:"StepIndex,omitempty"`
-	StepName       string                 `protobuf:"bytes,3,opt,name=StepName,proto3" json:"StepName,omitempty"`
-	TaskQueue      string                 `protobuf:"bytes,4,opt,name=TaskQueue,proto3" json:"TaskQueue,omitempty"`
-	TimeoutSeconds int64                  `protobuf:"varint,5,opt,name=TimeoutSeconds,proto3" json:"TimeoutSeconds,omitempty"`
+	StepName       string                 `protobuf:"bytes,2,opt,name=StepName,proto3" json:"StepName,omitempty"`
+	TimeoutSeconds int64                  `protobuf:"varint,3,opt,name=TimeoutSeconds,proto3" json:"TimeoutSeconds,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -70,23 +68,9 @@ func (x *WorkflowDefinitionStepRequest) GetWorkflowName() string {
 	return ""
 }
 
-func (x *WorkflowDefinitionStepRequest) GetStepIndex() int64 {
-	if x != nil {
-		return x.StepIndex
-	}
-	return 0
-}
-
 func (x *WorkflowDefinitionStepRequest) GetStepName() string {
 	if x != nil {
 		return x.StepName
-	}
-	return ""
-}
-
-func (x *WorkflowDefinitionStepRequest) GetTaskQueue() string {
-	if x != nil {
-		return x.TaskQueue
 	}
 	return ""
 }
@@ -962,13 +946,11 @@ var File_api_proto_workflow_proto protoreflect.FileDescriptor
 
 const file_api_proto_workflow_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc3\x01\n" +
+	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"\x87\x01\n" +
 	"\x1dWorkflowDefinitionStepRequest\x12\"\n" +
-	"\fWorkflowName\x18\x01 \x01(\tR\fWorkflowName\x12\x1c\n" +
-	"\tStepIndex\x18\x02 \x01(\x03R\tStepIndex\x12\x1a\n" +
-	"\bStepName\x18\x03 \x01(\tR\bStepName\x12\x1c\n" +
-	"\tTaskQueue\x18\x04 \x01(\tR\tTaskQueue\x12&\n" +
-	"\x0eTimeoutSeconds\x18\x05 \x01(\x03R\x0eTimeoutSeconds\"\xc4\x01\n" +
+	"\fWorkflowName\x18\x01 \x01(\tR\fWorkflowName\x12\x1a\n" +
+	"\bStepName\x18\x02 \x01(\tR\bStepName\x12&\n" +
+	"\x0eTimeoutSeconds\x18\x03 \x01(\x03R\x0eTimeoutSeconds\"\xc4\x01\n" +
 	"\x1eWorkflowDefinitionStepResponce\x12\"\n" +
 	"\fWorkflowName\x18\x01 \x01(\tR\fWorkflowName\x12\x1c\n" +
 	"\tStepIndex\x18\x02 \x01(\x03R\tStepIndex\x12\x1a\n" +
