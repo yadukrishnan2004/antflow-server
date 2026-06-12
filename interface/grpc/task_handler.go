@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/api/grpc/pb"
 	"google.golang.org/grpc/codes"
@@ -14,6 +13,9 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 	if taskQueue == "" {
 		taskQueue = "default"
 	}
+
+	ch, unsubscribe := h.service.SubscribeToQueue(taskQueue)
+	defer unsubscribe()
 
 	for {
 		select {
@@ -43,8 +45,12 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 					return err
 				}
 			} else {
-				// No task found, long poll delay
-				time.Sleep(1 * time.Second)
+				select {
+				case <-stream.Context().Done():
+					return stream.Context().Err()
+				case <-ch:
+					// woken up by new task notification
+				}
 			}
 		}
 	}

@@ -186,6 +186,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 	if err := i.taskRepo.SaveTask(nextTask); err != nil {
 		return fmt.Errorf("failed to save next task: %w", err)
 	}
+	i.taskBroker.Notify(resolvedQueue)
 
 	if err := i.workflowRepo.UpdateStepCursor(exec.ID, nextIndex); err != nil {
 		return fmt.Errorf("failed to advance step cursor: %w", err)

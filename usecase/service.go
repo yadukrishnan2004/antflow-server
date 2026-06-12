@@ -15,6 +15,7 @@ type WorkflowService interface {
 	CancelWorkflow(ctx context.Context, workflowID string) error
 	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)
 	GetWorkflowNameForExecution(executionID string) (string, error)
+	SubscribeToQueue(taskQueue string) (chan struct{}, func())
 }
 
 type workflowInteractor struct {
@@ -22,6 +23,7 @@ type workflowInteractor struct {
 	taskRepo       workflow.TaskRepository
 	checkpointRepo workflow.CheckpointRepository  
 	historyRepo    workflow.HistoryRepository
+	taskBroker     *TaskBroker
 }
 
 func NewWorkflowService(
@@ -35,5 +37,10 @@ func NewWorkflowService(
 		taskRepo:       tRepo,
 		checkpointRepo: cRepo,
 		historyRepo:    hRepo,
+		taskBroker:     NewTaskBroker(),
 	}
+}
+
+func (i *workflowInteractor) SubscribeToQueue(taskQueue string) (chan struct{}, func()) {
+	return i.taskBroker.Subscribe(taskQueue)
 }

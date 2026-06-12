@@ -44,6 +44,7 @@ func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string
 
 	switch def.WorkflowType {
 	case workflow.IndependentWorkflow:
+		notifiedQueues := make(map[string]bool)
 		for idx, step := range def.Steps {
 			q := step.TaskQueue
 			if q == "" || q == "default" {
@@ -72,6 +73,10 @@ func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string
 				EventType:           "StepScheduled",
 				CreatedAt:           time.Now(),
 			})
+			notifiedQueues[q] = true
+		}
+		for q := range notifiedQueues {
+			i.taskBroker.Notify(q)
 		}
 
 	default: // ChainWorkflow
@@ -103,6 +108,7 @@ func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string
 			EventType:           "StepScheduled",
 			CreatedAt:           time.Now(),
 		})
+		i.taskBroker.Notify(q)
 	}
 
 	return exec, nil
