@@ -2,10 +2,11 @@ package grpc
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/api/grpc/pb"
+	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 	"github.com/yadukrishnan2004/antflow-server/usecase"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -32,9 +33,7 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
 
     wf, err := h.service.RegisterWorkflow(req.Name, req.WorkflowType, req.Steps)
     if err != nil {
-        // Step mismatch is a caller error, not an internal server error
-        if strings.Contains(err.Error(), "already registered") ||
-            strings.Contains(err.Error(), "mismatch") {
+        if errors.Is(err, workflow.ErrWorkflowAlreadyExists) {
             return nil, status.Errorf(codes.AlreadyExists, "%v", err)
         }
         return nil, status.Errorf(codes.Internal, "failed to register workflow: %v", err)
@@ -59,16 +58,16 @@ func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkfl
 	if taskQueue == "" {
 		taskQueue = "default"
 	}
-	task, err := h.service.StartWorkflow(req.WorkflowId, taskQueue, req.Input)
+	exec, err := h.service.StartWorkflow(req.WorkflowId, taskQueue, req.Input)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to start workflow: %v", err)
 	}
 
 	return &pb.StartWorkflowResponse{
-		Id:         task.ID,
-		WorkflowId: task.WorkflowExecutionID,
-		Name:       task.StepName,
-		State:      string(task.State),
+		Id:         exec.ID,
+		WorkflowId: exec.ID,
+		Name:       exec.WorkflowName,
+		State:      string(exec.State),
 	}, nil
 }
 
@@ -90,11 +89,15 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 			}
 
 			if task != nil {
+				workflowName, err := h.service.GetWorkflowNameForExecution(task.WorkflowExecutionID)
+				if err != nil {
+					return status.Errorf(codes.Internal, "failed to resolve workflow name: %v", err)
+				}
 				// We found a task, send it to the worker
 				err = stream.Send(&pb.StreamTaskResponse{
 					TaskId:     task.ID,
 					WorkflowId: task.WorkflowExecutionID,
-					Name:       task.StepName,
+					Name:       workflowName,
 					StepName:   task.StepName,
 					StepIndex:  int32(task.StepIndex),
 					Input:      task.Input,

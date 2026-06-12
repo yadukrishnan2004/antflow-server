@@ -16,7 +16,6 @@ type WorkflowDefinitionStep struct {
 	StepName       string
 	TaskQueue      string
 	TimeoutSeconds int
-	WorkflowType   WorkflowType
 }
 
 // WorkflowDefinition represents a registered workflow type.

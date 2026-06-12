@@ -75,8 +75,6 @@ func (s *PostgresWorkflowRepository) Migrate() error {
 			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);
 
-		ALTER TABLE workflow_definition ADD COLUMN IF NOT EXISTS workflow_type TEXT NOT NULL DEFAULT 'CHAIN';
-
 		CREATE TABLE IF NOT EXISTS workflow_definition_step (
 			workflow_name   TEXT NOT NULL,
 			step_index      INT NOT NULL,
@@ -106,8 +104,6 @@ func (s *PostgresWorkflowRepository) Migrate() error {
 				REFERENCES workflow_definition(name)
 				ON DELETE RESTRICT
 		);
-
-		ALTER TABLE workflow_execution ADD COLUMN IF NOT EXISTS workflow_type TEXT NOT NULL DEFAULT 'CHAIN';
 	`)
 	return err
 }
@@ -122,20 +118,9 @@ func (s *PostgresWorkflowRepository) SaveDefinition(def *workflow.WorkflowDefini
 	_, err = tx.Exec(`
 		INSERT INTO workflow_definition (name, workflow_type, description, created_at)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (name) DO UPDATE SET workflow_type = EXCLUDED.workflow_type, description = EXCLUDED.description
 	`, def.Name, string(def.WorkflowType), def.Description, def.CreatedAt)
-
 	if err != nil {
 		return fmt.Errorf("repo: failed to save workflow definition: %w", err)
-	}
-
-	// Delete old steps to handle re-registration cleanly
-	_, err = tx.Exec(`
-		DELETE FROM workflow_definition_step
-		WHERE workflow_name = $1
-	`, def.Name)
-	if err != nil {
-		return fmt.Errorf("repo: failed to clear existing workflow steps: %w", err)
 	}
 
 	for _, step := range def.Steps {
@@ -144,7 +129,7 @@ func (s *PostgresWorkflowRepository) SaveDefinition(def *workflow.WorkflowDefini
 			VALUES ($1, $2, $3, $4, $5)
 		`, step.WorkflowName, step.StepIndex, step.StepName, step.TaskQueue, step.TimeoutSeconds)
 		if err != nil {
-			return fmt.Errorf("repo: failed to save workflow step: %w", err)
+			return fmt.Errorf("repo: failed to save step '%s': %w", step.StepName, err)
 		}
 	}
 
@@ -193,7 +178,6 @@ func (s *PostgresWorkflowRepository) FindDefinitionByName(name string) (*workflo
 		if err := rows.Scan(&step.WorkflowName, &step.StepIndex, &step.StepName, &step.TaskQueue, &step.TimeoutSeconds); err != nil {
 			return nil, err
 		}
-		step.WorkflowType = d.WorkflowType
 		d.Steps = append(d.Steps, step)
 	}
 
@@ -286,25 +270,22 @@ func (s *PostgresWorkflowRepository) UpdateExecutionState(id string, state workf
 
 func (s *PostgresWorkflowRepository) FindStep(workflowName string, stepIndex int) (*workflow.WorkflowDefinitionStep, error) {
 	row := s.db.QueryRow(`
-		SELECT s.workflow_name, s.step_index, s.step_name, s.task_queue, s.timeout_seconds, d.workflow_type
-		FROM workflow_definition_step s
-		JOIN workflow_definition d ON s.workflow_name = d.name
-		WHERE s.workflow_name = $1 AND s.step_index = $2
+		SELECT workflow_name, step_index, step_name, task_queue, timeout_seconds
+		FROM workflow_definition_step
+		WHERE workflow_name = $1 AND step_index = $2
 	`, workflowName, stepIndex)
 
 	var step workflow.WorkflowDefinitionStep
-	var workflowTypeStr string
 
 	if err := row.Scan(
 		&step.WorkflowName, &step.StepIndex, &step.StepName,
-		&step.TaskQueue, &step.TimeoutSeconds, &workflowTypeStr,
+		&step.TaskQueue, &step.TimeoutSeconds,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("repo: step %d not found for workflow %s", stepIndex, workflowName)
 		}
 		return nil, fmt.Errorf("repo: failed to find step: %w", err)
 	}
-	step.WorkflowType = workflow.WorkflowType(workflowTypeStr)
 	return &step, nil
 }
 
@@ -333,7 +314,16 @@ func (s *PostgresWorkflowRepository) SaveResult(id string, result []byte) error 
     return nil
 }
 
-
+func (s *PostgresWorkflowRepository) GetWorkflowNameByExecutionID(executionID string) (string, error) {
+	var name string
+	err := s.db.QueryRow(`
+		SELECT workflow_name FROM workflow_execution WHERE id = $1
+	`, executionID).Scan(&name)
+	if err != nil {
+		return "", fmt.Errorf("repo: failed to get workflow name: %w", err)
+	}
+	return name, nil
+}
 
 // ---------------------------------------------------------------------------
 // PostgresTaskRepository

@@ -10,6 +10,7 @@ type WorkflowRepository interface {
     UpdateExecutionState(id string, state State) error
     UpdateStepCursor(id string, stepIndex int) error   
     SaveResult(id string, result []byte) error          
+    GetWorkflowNameByExecutionID(executionID string) (string, error)
     Migrate() error
 }
 

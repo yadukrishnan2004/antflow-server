@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,12 +14,13 @@ import (
 
 type WorkflowService interface {
 	RegisterWorkflow(name string, workflowType string, stepNames []string) (*workflow.WorkflowDefinition, error)
-	StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.Task, error)
+	StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.WorkflowExecution, error)
 	PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error)
 	CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error
 	GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.WorkflowExecution, error)
 	CancelWorkflow(ctx context.Context, workflowID string) error
 	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)
+	GetWorkflowNameForExecution(executionID string) (string, error)
 }
 
 type workflowInteractor struct {
@@ -44,12 +46,44 @@ func NewWorkflowService(
 //===============================================================================================================================================================================
 func (i *workflowInteractor) RegisterWorkflow(name string, workflowType string, stepNames []string) (*workflow.WorkflowDefinition, error) {
 	if name == "" {
-        return nil, fmt.Errorf("workflow name cannot be empty")
-    }
+		return nil, fmt.Errorf("workflow name cannot be empty")
+	}
+	if len(stepNames) == 0 {
+		return nil, fmt.Errorf("workflow '%s' must have at least one step", name)
+	}
+
+	existing, err := i.workflowRepo.FindDefinitionByName(name)
+	if err != nil && !errors.Is(err, workflow.ErrNotFound) {
+		return nil, fmt.Errorf("failed to check existing workflow: %w", err)
+	}
+
+	if existing != nil {
+		// Check type matches
+		if string(existing.WorkflowType) != workflowType {
+			return nil, fmt.Errorf("%w: '%s' registered as %s, cannot re-register as %s",
+				workflow.ErrWorkflowAlreadyExists, name, existing.WorkflowType, workflowType)
+		}
+		// Check step count matches
+		if len(existing.Steps) != len(stepNames) {
+			return nil, fmt.Errorf("%w: '%s' has %d steps, cannot re-register with %d",
+				workflow.ErrWorkflowAlreadyExists, name, len(existing.Steps), len(stepNames))
+		}
+		// Check each step name matches in order
+		for idx, step := range existing.Steps {
+			if step.StepName != stepNames[idx] {
+				return nil, fmt.Errorf("%w: '%s' step %d mismatch — existing='%s' new='%s'",
+					workflow.ErrWorkflowAlreadyExists, name, idx, step.StepName, stepNames[idx])
+			}
+		}
+		// Identical definition — idempotent success
+		return existing, nil
+	}
+
+	// New workflow — build and save
 	def := &workflow.WorkflowDefinition{
 		Name:         name,
 		WorkflowType: workflow.WorkflowType(workflowType),
-		CreatedAt:    time.Now(), 
+		CreatedAt:    time.Now(),
 	}
 	for idx, stepName := range stepNames {
 		def.Steps = append(def.Steps, workflow.WorkflowDefinitionStep{
@@ -58,139 +92,113 @@ func (i *workflowInteractor) RegisterWorkflow(name string, workflowType string, 
 			StepName:       stepName,
 			TaskQueue:      "default",
 			TimeoutSeconds: 300,
-			WorkflowType:   workflow.WorkflowType(workflowType),
 		})
 	}
 
-	existing, errs := i.workflowRepo.FindDefinitionByName(name)
-	if errs != nil {
-		if !errors.Is(errs, workflow.ErrNotFound) {
-			return nil, fmt.Errorf("failed to check existing workflow: %w", errs)
-		}
-	} else if existing != nil {
-		return nil, fmt.Errorf("%s: %w", name, workflow.ErrWorkflowAlreadyExists)
-	}
-
-	err := i.workflowRepo.SaveDefinition(def)
-	if err != nil {
+	if err := i.workflowRepo.SaveDefinition(def); err != nil {
 		return nil, fmt.Errorf("failed to save workflow definition: %w", err)
 	}
 
 	return def, nil
 }
 //===============================================================================================================================================================================
-func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.Task, error) {
-	// 1. Ensure definition exists
-	def, err := i.workflowRepo.FindDefinitionByName(workflowName)
-	if err != nil {
-		return nil, fmt.Errorf("workflow definition not found: %w", err)
-	}
+func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string, input []byte) (*workflow.WorkflowExecution, error) {
+    def, err := i.workflowRepo.FindDefinitionByName(workflowName)
+    if err != nil {
+        return nil, fmt.Errorf("workflow definition not found: %w", err)
+    }
+    if len(def.Steps) == 0 {
+        return nil, fmt.Errorf("workflow '%s' has no steps registered", workflowName)
+    }
 
-	// 2. Create Execution
-	exec := &workflow.WorkflowExecution{
-		ID:               fmt.Sprintf("run-%s", uuid.New().String()),
-		WorkflowName:     workflowName,
-		WorkflowType:     def.WorkflowType,
-		TaskQueue:        taskQueue,
-		State:            workflow.StateRunning,
-		Input:            input,
-		CurrentStepIndex: 0,
-		TotalSteps:       len(def.Steps),
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
-	}
+    exec := &workflow.WorkflowExecution{
+        ID:               fmt.Sprintf("run-%s", uuid.New().String()),
+        WorkflowName:     workflowName,
+        WorkflowType:     def.WorkflowType,
+        TaskQueue:        taskQueue,
+        State:            workflow.StateRunning,
+        Input:            input,
+        CurrentStepIndex: 0,
+        TotalSteps:       len(def.Steps),
+        CreatedAt:        time.Now(),
+        UpdatedAt:        time.Now(),
+    }
 
-	err = i.workflowRepo.SaveExecution(exec)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save workflow execution: %w", err)
-	}
+    if err := i.workflowRepo.SaveExecution(exec); err != nil {
+        return nil, fmt.Errorf("failed to save workflow execution: %w", err)
+    }
 
-	// Save WorkflowStarted history event
-	i.historyRepo.SaveEvent(&workflow.HistoryEvent{
-		WorkflowExecutionID: exec.ID,
-		EventType:           "WorkflowStarted",
-		Payload:             input,
-		CreatedAt:           time.Now(),
-	})
+    i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+        WorkflowExecutionID: exec.ID,
+        EventType:           "WorkflowStarted",
+        Payload:             input,
+        CreatedAt:           time.Now(),
+    })
 
-	if def.WorkflowType == workflow.IndependentWorkflow {
-		var firstTask *workflow.Task
-		for idx, step := range def.Steps {
-			q := taskQueue
-			if q == "default" && step.TaskQueue != "" {
-				q = step.TaskQueue
-			}
-			t := &workflow.Task{
-				ID:                  fmt.Sprintf("task-%s", uuid.New().String()),
-				WorkflowExecutionID: exec.ID,
-				TaskQueue:           q,
-				StepIndex:           idx,
-				StepName:            step.StepName,
-				Input:               input, // independent gets original input
-				State:               workflow.StateCreated,
-				Attempt:             1,
-				MaxAttempts:         3,
-				ScheduledAt:         time.Now(),
-			}
-			if err := i.taskRepo.SaveTask(t); err != nil {
-				return nil, fmt.Errorf("failed to save task %d: %w", idx, err)
-			}
-			// Save StepScheduled event
-			stepIdx := idx
-			stepName := step.StepName
-			i.historyRepo.SaveEvent(&workflow.HistoryEvent{
-				WorkflowExecutionID: exec.ID,
-				StepIndex:           &stepIdx,
-				StepName:            &stepName,
-				EventType:           "StepScheduled",
-				CreatedAt:           time.Now(),
-			})
-			if idx == 0 {
-				firstTask = t
-			}
-		}
-		return firstTask, nil
-	}
+    switch def.WorkflowType {
+    case workflow.IndependentWorkflow:
+        for idx, step := range def.Steps {
+            q := step.TaskQueue
+            if q == "" {
+                q = taskQueue
+            }
+            t := &workflow.Task{
+                ID:                  fmt.Sprintf("task-%s", uuid.New().String()),
+                WorkflowExecutionID: exec.ID,
+                TaskQueue:           q,
+                StepIndex:           idx,
+                StepName:            step.StepName,
+                Input:               input,
+                State:               workflow.StateCreated,
+                Attempt:             1,
+                MaxAttempts:         3,
+                ScheduledAt:         time.Now(),
+            }
+            if err := i.taskRepo.SaveTask(t); err != nil {
+                return nil, fmt.Errorf("failed to save task for step %d: %w", idx, err)
+            }
+            stepIdx, stepName := idx, step.StepName
+            i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+                WorkflowExecutionID: exec.ID,
+                StepIndex:           &stepIdx,
+                StepName:            &stepName,
+                EventType:           "StepScheduled",
+                CreatedAt:           time.Now(),
+            })
+        }
 
-	// Default/CHAIN workflow behavior
-	var stepName string
-	q := taskQueue
-	if len(def.Steps) > 0 {
-		stepName = def.Steps[0].StepName
-		if q == "default" && def.Steps[0].TaskQueue != "" {
-			q = def.Steps[0].TaskQueue
-		}
-	} else {
-		stepName = workflowName
-	}
+    default: // ChainWorkflow
+        step0 := def.Steps[0]
+        q := step0.TaskQueue
+        if q == "" {
+            q = taskQueue
+        }
+        t := &workflow.Task{
+            ID:                  fmt.Sprintf("task-%s", uuid.New().String()),
+            WorkflowExecutionID: exec.ID,
+            TaskQueue:           q,
+            StepIndex:           0,
+            StepName:            step0.StepName,
+            Input:               input,
+            State:               workflow.StateCreated,
+            Attempt:             1,
+            MaxAttempts:         3,
+            ScheduledAt:         time.Now(),
+        }
+        if err := i.taskRepo.SaveTask(t); err != nil {
+            return nil, fmt.Errorf("failed to save step 0 task: %w", err)
+        }
+        stepIdx, stepName := 0, step0.StepName
+        i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+            WorkflowExecutionID: exec.ID,
+            StepIndex:           &stepIdx,
+            StepName:            &stepName,
+            EventType:           "StepScheduled",
+            CreatedAt:           time.Now(),
+        })
+    }
 
-	t := &workflow.Task{
-		ID:                  fmt.Sprintf("task-%s", uuid.New().String()),
-		WorkflowExecutionID: exec.ID,
-		TaskQueue:           q,
-		StepIndex:           0,
-		StepName:            stepName,
-		Input:               input,
-		State:               workflow.StateCreated,
-		Attempt:             1,
-		MaxAttempts:         3,
-		ScheduledAt:         time.Now(),
-	}
-
-	if err := i.taskRepo.SaveTask(t); err != nil {
-		return nil, fmt.Errorf("failed to save task: %w", err)
-	}
-
-	stepIdx := 0
-	i.historyRepo.SaveEvent(&workflow.HistoryEvent{
-		WorkflowExecutionID: exec.ID,
-		StepIndex:           &stepIdx,
-		StepName:            &stepName,
-		EventType:           "StepScheduled",
-		CreatedAt:           time.Now(),
-	})
-
-	return t, nil
+    return exec, nil
 }
 
 //===============================================================================================================================================================================
@@ -241,45 +249,55 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 
 	if errString != "" {
 		if t.Attempt < t.MaxAttempts {
-			i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+			if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
                 WorkflowExecutionID: exec.ID,
                 StepIndex:           &t.StepIndex,
                 StepName:            &t.StepName,
                 EventType:           "StepRetrying",
                 Error:               errString,
                 CreatedAt:           time.Now(),
-            })
+            }); err != nil {
+				log.Printf("warn: failed to save history event: %v", err)
+			}
 			return nil
 		}
-		i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateFailed)
-		i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+		if err := i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateFailed); err != nil {
+			return fmt.Errorf("failed to mark execution failed: %w", err)
+		}
+		if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				StepIndex:           &t.StepIndex,
 				StepName:            &t.StepName,
 				EventType:           "StepFailed",
 				Error:               errString,
 				CreatedAt:           time.Now(),
-		})
+		}); err != nil {
+			log.Printf("warn: failed to save history event: %v", err)
+		}
 	
-		i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+		if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				EventType:           "WorkflowExecutionFailed",
 				Error:               errString,
 				CreatedAt:           time.Now(),
-			})
+			}); err != nil {
+				log.Printf("warn: failed to save history event: %v", err)
+			}
 			return nil
 	}
 
 	if exec.WorkflowType == workflow.IndependentWorkflow {
-		// 1. Write StepCompleted history
-		i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+		// 1. Write StepCompleted history (best-effort)
+		if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
 			EventType:           "StepCompleted",
 			Payload:             result,
 			CreatedAt:           time.Now(),
-		})
+		}); err != nil {
+			log.Printf("warn: failed to save history event: %v", err)
+		}
 
 		// 2. Check completed count
 		completedCount, err := i.taskRepo.CountCompletedTasks(exec.ID)
@@ -299,48 +317,64 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 				return fmt.Errorf("failed to marshal combined outputs: %w", err)
 			}
 
-			i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateCompleted)
-			i.workflowRepo.SaveResult(exec.ID, combinedBytes)
-			i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+			if err := i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateCompleted); err != nil {
+				return fmt.Errorf("failed to mark execution complete: %w", err)
+			}
+			if err := i.workflowRepo.SaveResult(exec.ID, combinedBytes); err != nil {
+				return fmt.Errorf("failed to save execution result: %w", err)
+			}
+			if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				EventType:           "WorkflowExecutionCompleted",
 				Payload:             combinedBytes,
 				CreatedAt:           time.Now(),
-			})
+			}); err != nil {
+				log.Printf("warn: failed to save history event: %v", err)
+			}
 		}
 		return nil
 	}
 
 	// CHAIN workflow behavior
-	i.checkpointRepo.SaveCheckpoint(&workflow.Checkpoint{
+	if err := i.checkpointRepo.SaveCheckpoint(&workflow.Checkpoint{
         WorkflowExecutionID: exec.ID,
         StepIndex:           t.StepIndex,
         StateSnapshot:       result,
         CreatedAt:           time.Now(),
-    })
+    }); err != nil {
+		return fmt.Errorf("failed to save checkpoint at step %d: %w", t.StepIndex, err)
+	}
 
-    // Write StepCompleted history
-    i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+    // Write StepCompleted history (best-effort)
+    if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
         WorkflowExecutionID: exec.ID,
         StepIndex:           &t.StepIndex,
         StepName:            &t.StepName,
         EventType:           "StepCompleted",
         Payload:             result,
         CreatedAt:           time.Now(),
-    })
+    }); err != nil {
+		log.Printf("warn: failed to save history event: %v", err)
+	}
 
 	 nextIndex := t.StepIndex + 1
 
     if nextIndex >= exec.TotalSteps {
         // All steps done
-        i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateCompleted)
-        i.workflowRepo.SaveResult(exec.ID, result)
-        i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+        if err := i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateCompleted); err != nil {
+			return fmt.Errorf("failed to mark execution complete: %w", err)
+		}
+        if err := i.workflowRepo.SaveResult(exec.ID, result); err != nil {
+			return fmt.Errorf("failed to save execution result: %w", err)
+		}
+        if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
             WorkflowExecutionID: exec.ID,
             EventType:           "WorkflowExecutionCompleted",
             Payload:             result,
             CreatedAt:           time.Now(),
-        })
+        }); err != nil {
+			log.Printf("warn: failed to save history event: %v", err)
+		}
         return nil
     }
 
@@ -373,14 +407,21 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 	if err := i.workflowRepo.UpdateStepCursor(exec.ID, nextIndex); err != nil {
         return fmt.Errorf("failed to advance step cursor: %w", err)
     }
-	i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+	if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
         WorkflowExecutionID: exec.ID,
         StepIndex:           &nextIndex,
         StepName:            &nextStep.StepName,
         EventType:           "StepScheduled",
         CreatedAt:           time.Now(),
-    })
+    }); err != nil {
+		log.Printf("warn: failed to save history event: %v", err)
+	}
 
     return nil
 }
+
+func (i *workflowInteractor) GetWorkflowNameForExecution(executionID string) (string, error) {
+	return i.workflowRepo.GetWorkflowNameByExecutionID(executionID)
+}
+
 //===============================================================================================================================================================================
