@@ -139,7 +139,7 @@ func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string
     case workflow.IndependentWorkflow:
         for idx, step := range def.Steps {
             q := step.TaskQueue
-            if q == "" {
+            if q == "" || q == "default" {
                 q = taskQueue
             }
             t := &workflow.Task{
@@ -170,7 +170,7 @@ func (i *workflowInteractor) StartWorkflow(workflowName string, taskQueue string
     default: // ChainWorkflow
         step0 := def.Steps[0]
         q := step0.TaskQueue
-        if q == "" {
+        if q == "" || q == "default" {
             q = taskQueue
         }
         t := &workflow.Task{
@@ -384,7 +384,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
     }
 
 	resolvedQueue := nextStep.TaskQueue
-    if resolvedQueue == "" {
+    if resolvedQueue == "" || resolvedQueue == "default" {
         resolvedQueue = exec.TaskQueue
     }
 
