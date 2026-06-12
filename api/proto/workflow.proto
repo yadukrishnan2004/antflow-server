@@ -8,7 +8,6 @@ import "google/protobuf/timestamp.proto";
 
 service WorkflowService {
   rpc RegisterWorkflow (RegisterWorkflowRequest) returns (RegisterWorkflowResponse);
-  rpc AddStep (WorkflowDefinitionStepRequest) returns (WorkflowDefinitionStepResponce);
   rpc StartWorkflow (StartWorkflowRequest) returns (StartWorkflowResponse);
   rpc StreamTasks (StreamTasksRequest) returns (stream StreamTaskResponse);
   rpc CompleteTask (CompleteTaskRequest) returns (CompleteTaskResponse);
@@ -18,22 +17,10 @@ service WorkflowService {
 }
 
 
-message WorkflowDefinitionStepRequest {
-	string WorkflowName    =1;
-	string StepName        =2; 
-	int64 TimeoutSeconds   =3;
-} 
-
-message WorkflowDefinitionStepResponce {
-	string WorkflowName  = 1;
-	int64 StepIndex      = 2;
-	string StepName      = 3; 
-	string TaskQueue     = 4;
-	int64 TimeoutSeconds = 5;
-} 
-
 message RegisterWorkflowRequest {
   string name = 1;
+  string workflow_type = 2;
+  repeated string steps = 3;
 }
 
 message RegisterWorkflowResponse {

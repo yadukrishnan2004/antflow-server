@@ -30,7 +30,7 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
     }
 
 
-    wf, err := h.service.RegisterWorkflow(req.Name)
+    wf, err := h.service.RegisterWorkflow(req.Name, req.WorkflowType, req.Steps)
     if err != nil {
         // Step mismatch is a caller error, not an internal server error
         if strings.Contains(err.Error(), "already registered") ||
@@ -46,6 +46,9 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
         CreatedAt: timestamppb.New(wf.CreatedAt),
     }, nil
 }
+// =====================================================================================================================================================
+
+
 // =====================================================================================================================================================
 func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkflowRequest) (*pb.StartWorkflowResponse, error) {
 	if req.WorkflowId == "" {

@@ -2,6 +2,13 @@ package workflow
 
 import "time"
 
+type WorkflowType string
+
+const (
+	ChainWorkflow       WorkflowType = "CHAIN"
+	IndependentWorkflow WorkflowType = "INDEPENDENT"
+)
+
 // WorkflowDefinitionStep represents a step inside a registered workflow type.
 type WorkflowDefinitionStep struct {
 	WorkflowName   string
@@ -9,15 +16,16 @@ type WorkflowDefinitionStep struct {
 	StepName       string
 	TaskQueue      string
 	TimeoutSeconds int
+	WorkflowType   WorkflowType
 }
 
 // WorkflowDefinition represents a registered workflow type.
 type WorkflowDefinition struct {
-	Name        string
-	Description string
-	Steps       []WorkflowDefinitionStep
-	NextIndex   int
-	CreatedAt   time.Time
+	Name         string
+	Description  string
+	Steps        []WorkflowDefinitionStep
+	CreatedAt    time.Time
+	WorkflowType WorkflowType
 }
 
 // WorkflowExecution represents a single run of a workflow.
@@ -33,6 +41,7 @@ type WorkflowExecution struct {
 	TotalSteps       int
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	WorkflowType     WorkflowType
 }
 
 // Task is a single unit of work within a workflow.
@@ -73,4 +82,10 @@ type HistoryEvent struct {
 	Payload             []byte
 	Error               string
 	CreatedAt           time.Time
+}
+
+type TaskOutput struct {
+	StepIndex int    `json:"step_index"`
+	StepName  string `json:"step_name"`
+	Output    []byte `json:"output"`
 }

@@ -22,6 +22,8 @@ type TaskRepository interface {
 	UpdateTaskComplete(taskID string, result []byte, errString string) error
 	FindLatestTask(workflowExecutionID string) (*Task, error)
 	ResetTimedOutTasks() error
+	CountCompletedTasks(workflowExecutionID string) (int, error)
+	GetAllTaskOutputs(workflowExecutionID string) ([]TaskOutput, error)
 	Migrate() error
 }
 
