@@ -11,6 +11,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+
+func (h * WorkflowHandler) RegisterNameSpace(ctx context.Context, req *pb.RegisterNameSpace) (*pb.RegisterNameSpaceResponse, error) {
+	
+}
+
 func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.RegisterWorkflowRequest) (*pb.RegisterWorkflowResponse, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow name is required")

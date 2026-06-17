@@ -11,7 +11,10 @@ const (
 	StateCompleted State = "COMPLETED"
 	StateFailed    State = "FAILED"
 	StateCancelled State = "CANCELLED"
+	ActiveStatusActive State = "ACTIVE"
+	ActiveStatusDELETE State = "DELETED"
 )
+
 
 var validTransitions = map[State][]State{
 	StateCreated:   {StateRunning, StateCancelled},
@@ -30,9 +33,9 @@ func ValidateTransition(current, next State) error {
 	return fmt.Errorf("invalid state transition: %s → %s", current, next)
 }
 
-
-
 // IsTerminal returns true if no further transitions are possible from this state.
 func IsTerminal(s State) bool {
 	return len(validTransitions[s]) == 0
 }
+
+

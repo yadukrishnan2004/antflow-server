@@ -1,67 +1,70 @@
 package usecase
 
 import (
-	"errors"
-	"fmt"
-	"time"
+    "context"
+    "errors"
+    "fmt"
+    "time"
 
-	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
+    "github.com/google/uuid"
+    "github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
 
-func (i *workflowInteractor) RegisterWorkflow(name string, workflowType string, stepNames []string) (*workflow.WorkflowDefinition, error) {
-	if name == "" {
-		return nil, fmt.Errorf("workflow name cannot be empty")
-	}
-	if len(stepNames) == 0 {
-		return nil, fmt.Errorf("workflow '%s' must have at least one step", name)
+func (w *workflowInteractor) RegisterNameSpace(ctx context.Context, name string) (string, error) {
+    existing, err := w.namespaceRepo.GetByName(ctx, name)
+    if err != nil && !errors.Is(err, workflow.ErrNotFound) {
+        return "", fmt.Errorf("failed to check namespace: %w", err)
+    }
+    if existing != nil {
+        return "", fmt.Errorf("namespace %q already exists", name)
+    }
+
+    ns := &workflow.Namespace{
+        ID:        uuid.New().String(),
+        Name:      name,
+        CreatedAt: time.Now(),
+    }
+
+    if err := w.namespaceRepo.Create(ctx, ns); err != nil {
+        return "", fmt.Errorf("failed to create namespace: %w", err)
+    }
+
+    return ns.ID, nil
+}
+
+func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string) (*workflow.WorkflowDefinition, error) {
+ 
+    ns, err := w.namespaceRepo.GetByName(ctx, name)
+    if err != nil {
+        if errors.Is(err, workflow.ErrNotFound) {
+            return nil, fmt.Errorf("namespace %q not found", name)
+        }
+        return nil, fmt.Errorf("failed to get namespace: %w", err)
+    }
+
+    wf := &workflow.WorkflowDefinition{
+        ID:            uuid.New().String(),
+        NamespaceID:   ns.ID,
+        WorkflowType:  workflowType,
+		Steps: len(stepNames),
+        CreatedAt:     time.Now(),
+    }
+	
+	if err := w.workflowRepo.Create(ctx, wf); err != nil {
+		return nil, fmt.Errorf("failed to create workflow: %w", err)
 	}
 
-	existing, err := i.workflowRepo.FindDefinitionByName(name)
-	if err != nil && !errors.Is(err, workflow.ErrNotFound) {
-		return nil, fmt.Errorf("failed to check existing workflow: %w", err)
-	}
-
-	if existing != nil {
-		// Check type matches
-		if string(existing.WorkflowType) != workflowType {
-			return nil, fmt.Errorf("%w: '%s' registered as %s, cannot re-register as %s",
-				workflow.ErrWorkflowAlreadyExists, name, existing.WorkflowType, workflowType)
+	steps := make([]*workflow.WorkflowDefinitionStep, len(stepNames))
+    for i, stepName := range stepNames {
+        steps[i] = &workflow.WorkflowDefinitionStep{
+            ID:           uuid.New().String(),
+            WorkflowDefinitionID:   wf.ID,
+            StepName:     stepName,
+            StepIndex:    i + 1,
+        }
+		if err := w.workflowStepRepo.BatchCreate(ctx, steps[i]); err != nil {
+			return nil, fmt.Errorf("failed to create workflow steps: %w", err)
 		}
-		// Check step count matches
-		if len(existing.Steps) != len(stepNames) {
-			return nil, fmt.Errorf("%w: '%s' has %d steps, cannot re-register with %d",
-				workflow.ErrWorkflowAlreadyExists, name, len(existing.Steps), len(stepNames))
-		}
-		// Check each step name matches in order
-		for idx, step := range existing.Steps {
-			if step.StepName != stepNames[idx] {
-				return nil, fmt.Errorf("%w: '%s' step %d mismatch — existing='%s' new='%s'",
-					workflow.ErrWorkflowAlreadyExists, name, idx, step.StepName, stepNames[idx])
-			}
-		}
-		// Identical definition — idempotent success
-		return existing, nil
-	}
-
-	// New workflow — build and save
-	def := &workflow.WorkflowDefinition{
-		Name:         name,
-		WorkflowType: workflow.WorkflowType(workflowType),
-		CreatedAt:    time.Now(),
-	}
-	for idx, stepName := range stepNames {
-		def.Steps = append(def.Steps, workflow.WorkflowDefinitionStep{
-			WorkflowName:   name,
-			StepIndex:      idx,
-			StepName:       stepName,
-			TaskQueue:      "default",
-			TimeoutSeconds: 300,
-		})
-	}
-
-	if err := i.workflowRepo.SaveDefinition(def); err != nil {
-		return nil, fmt.Errorf("failed to save workflow definition: %w", err)
-	}
-
-	return def, nil
+    }
+    return wf, nil
 }
