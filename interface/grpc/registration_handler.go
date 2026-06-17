@@ -11,20 +11,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func (h *WorkflowHandler) RegisterNameSpace(ctx context.Context, req *pb.RegisterNameSpaceRequest) (*pb.RegisterNameSpaceResponse, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "namespace name is required")
-	}
-
-	id, err := h.service.RegisterNameSpace(ctx, req.Name)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to register namespace: %v", err)
-	}
-
-	return &pb.RegisterNameSpaceResponse{
-		Id: id,
-	}, nil
-}
 
 func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.RegisterWorkflowRequest) (*pb.RegisterWorkflowResponse, error) {
 	if req.Name == "" {

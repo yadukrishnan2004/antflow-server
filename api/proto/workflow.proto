@@ -7,7 +7,6 @@ option go_package = "github.com/yadukrishnan2004/antflow-server/api/grpc/pb";
 import "google/protobuf/timestamp.proto";
 
 service WorkflowService {
-  rpc RegisterNameSpace (RegisterNameSpaceRequest) returns (RegisterNameSpaceResponse);
   rpc RegisterWorkflow (RegisterWorkflowRequest) returns (RegisterWorkflowResponse);
   rpc StartWorkflow (StartWorkflowRequest) returns (StartWorkflowResponse);
   rpc StreamTasks (StreamTasksRequest) returns (stream StreamTaskResponse);
@@ -17,12 +16,6 @@ service WorkflowService {
   rpc StreamWorkflowHistory (StreamWorkflowHistoryRequest) returns (stream HistoryEvent);
 }
 
-message RegisterNameSpaceResponse {
-    string id = 1 ;
-}
-message RegisterNameSpaceRequest {
-  string name = 1;
-}
 
 message RegisterWorkflowRequest {
   string name = 1;

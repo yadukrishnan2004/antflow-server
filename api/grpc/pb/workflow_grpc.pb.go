@@ -19,7 +19,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	WorkflowService_RegisterNameSpace_FullMethodName     = "/workflow.WorkflowService/RegisterNameSpace"
 	WorkflowService_RegisterWorkflow_FullMethodName      = "/workflow.WorkflowService/RegisterWorkflow"
 	WorkflowService_StartWorkflow_FullMethodName         = "/workflow.WorkflowService/StartWorkflow"
 	WorkflowService_StreamTasks_FullMethodName           = "/workflow.WorkflowService/StreamTasks"
@@ -33,7 +32,6 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type WorkflowServiceClient interface {
-	RegisterNameSpace(ctx context.Context, in *RegisterNameSpaceRequest, opts ...grpc.CallOption) (*RegisterNameSpaceResponse, error)
 	RegisterWorkflow(ctx context.Context, in *RegisterWorkflowRequest, opts ...grpc.CallOption) (*RegisterWorkflowResponse, error)
 	StartWorkflow(ctx context.Context, in *StartWorkflowRequest, opts ...grpc.CallOption) (*StartWorkflowResponse, error)
 	StreamTasks(ctx context.Context, in *StreamTasksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamTaskResponse], error)
@@ -49,16 +47,6 @@ type workflowServiceClient struct {
 
 func NewWorkflowServiceClient(cc grpc.ClientConnInterface) WorkflowServiceClient {
 	return &workflowServiceClient{cc}
-}
-
-func (c *workflowServiceClient) RegisterNameSpace(ctx context.Context, in *RegisterNameSpaceRequest, opts ...grpc.CallOption) (*RegisterNameSpaceResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RegisterNameSpaceResponse)
-	err := c.cc.Invoke(ctx, WorkflowService_RegisterNameSpace_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *workflowServiceClient) RegisterWorkflow(ctx context.Context, in *RegisterWorkflowRequest, opts ...grpc.CallOption) (*RegisterWorkflowResponse, error) {
@@ -153,7 +141,6 @@ type WorkflowService_StreamWorkflowHistoryClient = grpc.ServerStreamingClient[Hi
 // All implementations must embed UnimplementedWorkflowServiceServer
 // for forward compatibility.
 type WorkflowServiceServer interface {
-	RegisterNameSpace(context.Context, *RegisterNameSpaceRequest) (*RegisterNameSpaceResponse, error)
 	RegisterWorkflow(context.Context, *RegisterWorkflowRequest) (*RegisterWorkflowResponse, error)
 	StartWorkflow(context.Context, *StartWorkflowRequest) (*StartWorkflowResponse, error)
 	StreamTasks(*StreamTasksRequest, grpc.ServerStreamingServer[StreamTaskResponse]) error
@@ -171,9 +158,6 @@ type WorkflowServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedWorkflowServiceServer struct{}
 
-func (UnimplementedWorkflowServiceServer) RegisterNameSpace(context.Context, *RegisterNameSpaceRequest) (*RegisterNameSpaceResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method RegisterNameSpace not implemented")
-}
 func (UnimplementedWorkflowServiceServer) RegisterWorkflow(context.Context, *RegisterWorkflowRequest) (*RegisterWorkflowResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RegisterWorkflow not implemented")
 }
@@ -214,24 +198,6 @@ func RegisterWorkflowServiceServer(s grpc.ServiceRegistrar, srv WorkflowServiceS
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&WorkflowService_ServiceDesc, srv)
-}
-
-func _WorkflowService_RegisterNameSpace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RegisterNameSpaceRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(WorkflowServiceServer).RegisterNameSpace(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: WorkflowService_RegisterNameSpace_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(WorkflowServiceServer).RegisterNameSpace(ctx, req.(*RegisterNameSpaceRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _WorkflowService_RegisterWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -353,10 +319,6 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "workflow.WorkflowService",
 	HandlerType: (*WorkflowServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "RegisterNameSpace",
-			Handler:    _WorkflowService_RegisterNameSpace_Handler,
-		},
 		{
 			MethodName: "RegisterWorkflow",
 			Handler:    _WorkflowService_RegisterWorkflow_Handler,

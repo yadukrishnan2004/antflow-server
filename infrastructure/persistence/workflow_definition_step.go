@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
@@ -93,4 +94,34 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
 	}
 
 	return steps, nil
+}
+
+func (s *PostgresWorkflowDefinitionStepRepository) GetByDefinitionAndIndex(
+	ctx context.Context,
+	definitionID string,
+	stepIndex int,
+) (*workflow.WorkflowDefinitionStep, error) {
+	step := &workflow.WorkflowDefinitionStep{}
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, workflow_definition_id, step_index, step_name, COALESCE(task_queue, ''), timeout_seconds
+         FROM workflow_definition_step
+         WHERE workflow_definition_id = $1 AND step_index = $2`,
+		definitionID,
+		stepIndex,
+	).Scan(
+		&step.ID,
+		&step.WorkflowDefinitionID,
+		&step.StepIndex,
+		&step.StepName,
+		&step.TaskQueue,
+		&step.TimeoutSeconds,
+	)
+	if err == sql.ErrNoRows {
+		return nil, workflow.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return step, nil
 }

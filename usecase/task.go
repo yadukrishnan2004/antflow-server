@@ -36,18 +36,34 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 				WorkflowExecutionID: exec.ID,
 				StepIndex:           &t.StepIndex,
 				StepName:            &t.StepName,
-				EventType:           "StepRetrying",
+				EventType:           "STEP_RETRYING",
 				Error:               errString,
 				CreatedAt:           time.Now(),
 			}); err != nil {
 				log.Printf("warn: failed to save history event: %v", err)
 			}
-			// Reset task state back to CREATED so it can be retried
-			if err := i.taskRepo.UpdateState(ctx, t.ID, workflow.StateCreated); err != nil {
-				log.Printf("warn: failed to reset task state for retry: %v", err)
+			// Delete the original task row to avoid unique constraint conflict!
+			_ = i.taskRepo.Delete(ctx, t.ID)
+
+			retryTask := &workflow.Task{
+				ID:                  uuid.New().String(),
+				WorkflowExecutionID: exec.ID,
+				StepIndex:           t.StepIndex,
+				StepName:            t.StepName,
+				TaskQueue:           t.TaskQueue,
+				Input:               t.Input,
+				State:               workflow.StateCreated,
+				Attempt:             t.Attempt + 1,
+				MaxAttempts:         t.MaxAttempts,
+				ScheduledAt:         time.Now().Add(time.Duration(t.Attempt*t.Attempt) * 5 * time.Second), // exponential backoff
 			}
+			if err := i.taskRepo.Create(ctx, retryTask); err != nil {
+				return fmt.Errorf("failed to create retry task: %w", err)
+			}
+			i.broker.Notify(t.TaskQueue)
 			return nil
 		}
+
 		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed); err != nil {
 			return fmt.Errorf("failed to mark execution failed: %w", err)
 		}
@@ -55,7 +71,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
-			EventType:           "StepFailed",
+			EventType:           "STEP_FAILED",
 			Error:               errString,
 			CreatedAt:           time.Now(),
 		}); err != nil {
@@ -64,14 +80,14 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 
 		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
-			EventType:           "WorkflowExecutionFailed",
+			EventType:           "WORKFLOW_FAILED",
 			Error:               errString,
 			CreatedAt:           time.Now(),
 		}); err != nil {
 			log.Printf("warn: failed to save history event: %v", err)
 		}
 
-		// Permanent failure - delete the task row
+		// Delete the task row after permanent failure
 		_ = i.taskRepo.Delete(ctx, t.ID)
 		return nil
 	}
@@ -82,7 +98,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
-			EventType:           "StepCompleted",
+			EventType:           "STEP_COMPLETED",
 			Payload:             result,
 			CreatedAt:           time.Now(),
 		}); err != nil {
@@ -115,7 +131,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			}
 			if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
-				EventType:           "WorkflowExecutionCompleted",
+				EventType:           "WORKFLOW_COMPLETED",
 				Payload:             combinedBytes,
 				CreatedAt:           time.Now(),
 			}); err != nil {
@@ -143,7 +159,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           &t.StepIndex,
 		StepName:            &t.StepName,
-		EventType:           "StepCompleted",
+		EventType:           "STEP_COMPLETED",
 		Payload:             result,
 		CreatedAt:           time.Now(),
 	}); err != nil {
@@ -162,7 +178,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		}
 		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
-			EventType:           "WorkflowExecutionCompleted",
+			EventType:           "WORKFLOW_COMPLETED",
 			Payload:             result,
 			CreatedAt:           time.Now(),
 		}); err != nil {
@@ -174,21 +190,10 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		return nil
 	}
 
-	// Fetch step definition
-	steps, err := i.workflowStepRepo.GetStepsByDefinitionID(ctx, exec.WorkflowDefinitionID)
+	// Fetch step definition using the new repo method
+	nextStep, err := i.workflowStepRepo.GetByDefinitionAndIndex(ctx, exec.WorkflowDefinitionID, nextIndex)
 	if err != nil {
-		return fmt.Errorf("failed to find workflow steps: %w", err)
-	}
-
-	var nextStep *workflow.WorkflowDefinitionStep
-	for _, step := range steps {
-		if step.StepIndex == nextIndex {
-			nextStep = &step
-			break
-		}
-	}
-	if nextStep == nil {
-		return fmt.Errorf("failed to find next step definition with index %d", nextIndex)
+		return fmt.Errorf("failed to find next step definition: %w", err)
 	}
 
 	resolvedQueue := nextStep.TaskQueue
@@ -197,7 +202,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 	}
 
 	nextTask := &workflow.Task{
-		ID:                  fmt.Sprintf("task-%s", uuid.New().String()),
+		ID:                  uuid.New().String(),
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           nextIndex,
 		StepName:            nextStep.StepName,
@@ -211,7 +216,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 	if err := i.taskRepo.Create(ctx, nextTask); err != nil {
 		return fmt.Errorf("failed to save next task: %w", err)
 	}
-	i.taskBroker.Notify(resolvedQueue)
+	i.broker.Notify(resolvedQueue)
 
 	if err := i.executionRepo.UpdateStepCursor(ctx, exec.ID, nextIndex); err != nil {
 		return fmt.Errorf("failed to advance step cursor: %w", err)
@@ -220,7 +225,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           &nextIndex,
 		StepName:            &nextStep.StepName,
-		EventType:           "StepScheduled",
+		EventType:           "STEP_SCHEDULED",
 		CreatedAt:           time.Now(),
 	}); err != nil {
 		log.Printf("warn: failed to save history event: %v", err)

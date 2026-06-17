@@ -7,7 +7,6 @@ import (
 )
 
 type WorkflowService interface {
-	RegisterNameSpace(ctx context.Context, name string) (string, error)
 	RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string) (*workflow.WorkflowDefinition, error)
 	StartWorkflow(ctx context.Context, workflowName string, taskQueue string, input []byte) (*workflow.WorkflowExecution, error)
 	PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error)
@@ -16,42 +15,42 @@ type WorkflowService interface {
 	CancelWorkflow(ctx context.Context, workflowID string) error
 	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)
 	GetWorkflowNameForExecution(ctx context.Context, executionID string) (string, error)
-	SubscribeToQueue(taskQueue string) (chan struct{}, func())
+	SubscribeToQueue(taskQueue string) (<-chan struct{}, func())
 }
 
 type workflowInteractor struct {
 	namespaceRepo    workflow.NamespaceRepository
-	workflowRepo     workflow.WorkflowDefinitionRepository
+	workflowDefRepo  workflow.WorkflowDefinitionRepository
 	workflowStepRepo workflow.WorkflowDefinitionStepRepository
 	executionRepo    workflow.WorkflowExecutionRepository
 	taskRepo         workflow.TaskRepository
 	historyRepo      workflow.HistoryEventRepository
 	checkpointRepo   workflow.CheckpointRepository
-	taskBroker       *TaskBroker
+	broker           *TaskBroker
 }
 
 func New(
 	namespaceRepo workflow.NamespaceRepository,
-	workflowRepo workflow.WorkflowDefinitionRepository,
+	workflowDefRepo workflow.WorkflowDefinitionRepository,
 	workflowStepRepo workflow.WorkflowDefinitionStepRepository,
 	executionRepo workflow.WorkflowExecutionRepository,
 	taskRepo workflow.TaskRepository,
 	historyRepo workflow.HistoryEventRepository,
 	checkpointRepo workflow.CheckpointRepository,
-	taskBroker *TaskBroker,
+	broker *TaskBroker,
 ) WorkflowService {
 	return &workflowInteractor{
 		namespaceRepo:    namespaceRepo,
-		workflowRepo:     workflowRepo,
+		workflowDefRepo:  workflowDefRepo,
 		workflowStepRepo: workflowStepRepo,
 		executionRepo:    executionRepo,
 		taskRepo:         taskRepo,
 		historyRepo:      historyRepo,
 		checkpointRepo:   checkpointRepo,
-		taskBroker:       taskBroker,
+		broker:           broker,
 	}
 }
 
-func (i *workflowInteractor) SubscribeToQueue(taskQueue string) (chan struct{}, func()) {
-	return i.taskBroker.Subscribe(taskQueue)
+func (i *workflowInteractor) SubscribeToQueue(taskQueue string) (<-chan struct{}, func()) {
+	return i.broker.Subscribe(taskQueue)
 }

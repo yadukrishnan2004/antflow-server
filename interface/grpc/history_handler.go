@@ -43,7 +43,7 @@ func (h *WorkflowHandler) StreamWorkflowHistory(req *pb.StreamWorkflowHistoryReq
 					}
 					lastSentEventID = event.ID
 
-					if event.EventType == "WorkflowExecutionCompleted" || event.EventType == "WorkflowExecutionFailed" || event.EventType == "WorkflowExecutionCancelled" {
+					if event.EventType == "WORKFLOW_COMPLETED" || event.EventType == "WORKFLOW_FAILED" || event.EventType == "WORKFLOW_CANCELLED" {
 						terminalReached = true
 					}
 				}

@@ -22,6 +22,7 @@ type WorkflowDefinitionRepository interface {
 type WorkflowDefinitionStepRepository interface {
 	BatchCreate(ctx context.Context, steps *WorkflowDefinitionStep) error
 	GetStepsByDefinitionID(ctx context.Context, definitionID string) ([]WorkflowDefinitionStep, error)
+	GetByDefinitionAndIndex(ctx context.Context, definitionID string, stepIndex int) (*WorkflowDefinitionStep, error)
 }
 
 // WorkflowExecutionRepository tracks the state machine of live workflow runs.
