@@ -11,9 +11,19 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+func (h *WorkflowHandler) RegisterNameSpace(ctx context.Context, req *pb.RegisterNameSpaceRequest) (*pb.RegisterNameSpaceResponse, error) {
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "namespace name is required")
+	}
 
-func (h * WorkflowHandler) RegisterNameSpace(ctx context.Context, req *pb.RegisterNameSpace) (*pb.RegisterNameSpaceResponse, error) {
-	
+	id, err := h.service.RegisterNameSpace(ctx, req.Name)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to register namespace: %v", err)
+	}
+
+	return &pb.RegisterNameSpaceResponse{
+		Id: id,
+	}, nil
 }
 
 func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.RegisterWorkflowRequest) (*pb.RegisterWorkflowResponse, error) {
@@ -21,7 +31,7 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
 		return nil, status.Error(codes.InvalidArgument, "workflow name is required")
 	}
 
-	wf, err := h.service.RegisterWorkflow(req.Name, req.WorkflowType, req.Steps)
+	wf, err := h.service.RegisterWorkflow(ctx, req.Name, req.WorkflowType, req.Steps)
 	if err != nil {
 		if errors.Is(err, workflow.ErrWorkflowAlreadyExists) {
 			return nil, status.Errorf(codes.AlreadyExists, "%v", err)
@@ -30,7 +40,7 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
 	}
 
 	return &pb.RegisterWorkflowResponse{
-		Id:        wf.Name,
+		Id:        wf.ID,
 		Name:      wf.Name,
 		CreatedAt: timestamppb.New(wf.CreatedAt),
 	}, nil

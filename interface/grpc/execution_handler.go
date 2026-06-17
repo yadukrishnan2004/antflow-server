@@ -17,7 +17,7 @@ func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkfl
 	if taskQueue == "" {
 		taskQueue = "default"
 	}
-	exec, err := h.service.StartWorkflow(req.WorkflowId, taskQueue, req.Input)
+	exec, err := h.service.StartWorkflow(ctx, req.WorkflowId, taskQueue, req.Input)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to start workflow: %v", err)
 	}

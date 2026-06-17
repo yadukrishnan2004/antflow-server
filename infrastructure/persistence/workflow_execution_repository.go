@@ -2,6 +2,8 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
@@ -13,6 +15,10 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 		CREATE TABLE IF NOT EXISTS workflow_execution (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			workflow_definition_id UUID NOT NULL,
+			workflow_name TEXT NOT NULL,
+			task_queue TEXT NOT NULL,
+			total_steps INTEGER NOT NULL,
+			workflow_type TEXT NOT NULL,
 
 			input BYTEA,
 			result BYTEA,
@@ -38,7 +44,8 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 						'CREATED',
 						'RUNNING',
 						'COMPLETED',
-						'FAILED'
+						'FAILED',
+						'CANCELLED'
 					)
 				),
 
@@ -51,32 +58,197 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 
 func (s *PostgresWorkflowExecutionRepository) Create(
 	ctx context.Context,
-	execution *workflow.WorkflowExecution,
+	exec *workflow.WorkflowExecution,
 ) error {
 	return s.db.QueryRowContext(
 		ctx,
 		`
 		INSERT INTO workflow_execution (
+			id,
 			workflow_definition_id,
+			workflow_name,
+			task_queue,
+			total_steps,
+			workflow_type,
 			input,
 			state,
 			current_step,
-			scheduled_at
+			scheduled_at,
+			created_at,
+			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING
-			id,
 			created_at,
 			updated_at
 		`,
-		execution.WorkflowDefinitionID,
-		execution.Input,
-		execution.State,
-		execution.CurrentStep,
-		execution.ScheduledAt,
+		exec.ID,
+		exec.WorkflowDefinitionID,
+		exec.WorkflowName,
+		exec.TaskQueue,
+		exec.TotalSteps,
+		string(exec.WorkflowType),
+		exec.Input,
+		string(exec.State),
+		exec.CurrentStep,
+		exec.ScheduledAt,
+		exec.CreatedAt,
+		exec.UpdatedAt,
 	).Scan(
-		&execution.ID,
-		&execution.CreatedAt,
-		&execution.UpdatedAt,
+		&exec.CreatedAt,
+		&exec.UpdatedAt,
 	)
+}
+
+func (s *PostgresWorkflowExecutionRepository) GetByID(
+	ctx context.Context,
+	id string,
+) (*workflow.WorkflowExecution, error) {
+	exec := &workflow.WorkflowExecution{}
+	var completedAt sql.NullTime
+	var stateStr string
+	var wfTypeStr string
+
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT 
+			id, workflow_definition_id, workflow_name, task_queue, total_steps, workflow_type,
+			input, result, state, COALESCE(error, ''), current_step, created_at, scheduled_at, updated_at, completed_at
+		 FROM workflow_execution 
+		 WHERE id = $1`,
+		id,
+	).Scan(
+		&exec.ID,
+		&exec.WorkflowDefinitionID,
+		&exec.WorkflowName,
+		&exec.TaskQueue,
+		&exec.TotalSteps,
+		&wfTypeStr,
+		&exec.Input,
+		&exec.Result,
+		&stateStr,
+		&exec.Error,
+		&exec.CurrentStep,
+		&exec.CreatedAt,
+		&exec.ScheduledAt,
+		&exec.UpdatedAt,
+		&completedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, workflow.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	exec.WorkflowType = workflow.WorkflowType(wfTypeStr)
+	exec.State = workflow.State(stateStr)
+	if completedAt.Valid {
+		exec.CompletedAt = &completedAt.Time
+	}
+
+	return exec, nil
+}
+
+func (s *PostgresWorkflowExecutionRepository) UpdateState(
+	ctx context.Context,
+	id string,
+	state workflow.State,
+) error {
+	var completedAt sql.NullTime
+	if state == workflow.StateCompleted || state == workflow.StateFailed || state == workflow.StateCancelled {
+		completedAt = sql.NullTime{Time: time.Now(), Valid: true}
+	}
+
+	var res sql.Result
+	var err error
+	if completedAt.Valid {
+		res, err = s.db.ExecContext(
+			ctx,
+			`UPDATE workflow_execution 
+			 SET state = $1, completed_at = $2, updated_at = NOW()
+			 WHERE id = $3`,
+			string(state),
+			completedAt.Time,
+			id,
+		)
+	} else {
+		res, err = s.db.ExecContext(
+			ctx,
+			`UPDATE workflow_execution 
+			 SET state = $1, updated_at = NOW()
+			 WHERE id = $2`,
+			string(state),
+			id,
+		)
+	}
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return workflow.ErrNotFound
+	}
+
+	return nil
+}
+
+func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
+	ctx context.Context,
+	id string,
+	nextStep int,
+) error {
+	res, err := s.db.ExecContext(
+		ctx,
+		`UPDATE workflow_execution 
+		 SET current_step = $1, updated_at = NOW()
+		 WHERE id = $2`,
+		nextStep,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return workflow.ErrNotFound
+	}
+
+	return nil
+}
+
+func (s *PostgresWorkflowExecutionRepository) SaveResult(
+	ctx context.Context,
+	id string,
+	result []byte,
+) error {
+	res, err := s.db.ExecContext(
+		ctx,
+		`UPDATE workflow_execution 
+		 SET result = $1, updated_at = NOW()
+		 WHERE id = $2`,
+		result,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return workflow.ErrNotFound
+	}
+
+	return nil
 }

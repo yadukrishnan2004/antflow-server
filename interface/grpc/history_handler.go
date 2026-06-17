@@ -31,9 +31,9 @@ func (h *WorkflowHandler) StreamWorkflowHistory(req *pb.StreamWorkflowHistoryReq
 				if event.StepName != nil {
 					actName = *event.StepName
 				}
-				if event.EventID > lastSentEventID {
+				if event.ID > lastSentEventID {
 					err = stream.Send(&pb.HistoryEvent{
-						EventId:      event.EventID,
+						EventId:      event.ID,
 						EventType:    event.EventType,
 						ActivityName: actName,
 						Result:       event.Payload,
@@ -41,7 +41,7 @@ func (h *WorkflowHandler) StreamWorkflowHistory(req *pb.StreamWorkflowHistoryReq
 					if err != nil {
 						return err
 					}
-					lastSentEventID = event.EventID
+					lastSentEventID = event.ID
 
 					if event.EventType == "WorkflowExecutionCompleted" || event.EventType == "WorkflowExecutionFailed" || event.EventType == "WorkflowExecutionCancelled" {
 						terminalReached = true

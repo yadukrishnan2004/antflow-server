@@ -16,6 +16,7 @@ type WorkflowDefinitionStep struct {
 	StepIndex            int
 	StepName             string
 	TimeoutSeconds       int
+	TaskQueue            string // optional override; empty = use execution's queue
 }
 
 // Task is a single unit of work within a workflow.
@@ -45,7 +46,7 @@ type HistoryEvent struct {
 	StepName            *string
 	EventType           string
 	Payload             []byte
-	Error               *string
+	Error               string // empty string = no error
 	CreatedAt           time.Time
 }
 
@@ -54,7 +55,6 @@ type TaskOutput struct {
 	StepName  string `json:"step_name"`
 	Output    []byte `json:"output"`
 }
-
 
 type Namespace struct {
 	ID        string
@@ -65,24 +65,28 @@ type Namespace struct {
 type WorkflowDefinition struct {
 	ID           string
 	NamespaceID  string
+	Name         string
 	WorkflowType string
 	Steps        int
 	CreatedAt    time.Time
 }
-
 
 type WorkflowExecution struct {
 	ID                   string
 	WorkflowDefinitionID string
 	Input                []byte
 	Result               []byte
-	State                string
+	State                State
 	Error                string
 	CurrentStep          int
 	CreatedAt            time.Time
 	ScheduledAt          time.Time
 	UpdatedAt            time.Time
 	CompletedAt          *time.Time
+	WorkflowName         string // denormalized for quick lookup
+	TaskQueue            string // the queue this execution runs on
+	TotalSteps           int    // total step count from the definition
+	WorkflowType         WorkflowType
 }
 
 type Checkpoint struct {

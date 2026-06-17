@@ -15,6 +15,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) Migrate() error {
 			workflow_definition_id UUID NOT NULL,
 			step_index INTEGER NOT NULL,
 			step_name TEXT NOT NULL,
+			task_queue TEXT,
 			timeout_seconds INTEGER NOT NULL DEFAULT 300,
 
 			CONSTRAINT fk_workflow_definition_step_definition
@@ -40,14 +41,16 @@ func (s *PostgresWorkflowDefinitionStepRepository) BatchCreate(
 			workflow_definition_id,
 			step_index,
 			step_name,
+			task_queue,
 			timeout_seconds
 		)
-		VALUES ($1, $2, $3, $4)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
 		`,
 		step.WorkflowDefinitionID,
 		step.StepIndex,
 		step.StepName,
+		step.TaskQueue,
 		step.TimeoutSeconds,
 	).Scan(&step.ID)
 }
@@ -58,7 +61,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
 ) ([]workflow.WorkflowDefinitionStep, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, workflow_definition_id, step_index, step_name, timeout_seconds
+		`SELECT id, workflow_definition_id, step_index, step_name, COALESCE(task_queue, ''), timeout_seconds
          FROM workflow_definition_step
          WHERE workflow_definition_id = $1
          ORDER BY step_index ASC`,
@@ -77,6 +80,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
 			&step.WorkflowDefinitionID,
 			&step.StepIndex,
 			&step.StepName,
+			&step.TaskQueue,
 			&step.TimeoutSeconds,
 		); err != nil {
 			return nil, err

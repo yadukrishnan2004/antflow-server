@@ -7,5 +7,5 @@ import (
 )
 
 func (i *workflowInteractor) GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error) {
-	return i.historyRepo.GetHistory(workflowID)
+	return i.historyRepo.GetByExecution(ctx, workflowID)
 }

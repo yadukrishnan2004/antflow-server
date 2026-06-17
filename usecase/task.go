@@ -12,27 +12,27 @@ import (
 )
 
 func (i *workflowInteractor) PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error) {
-	return i.taskRepo.FindAndLockPendingTask(taskQueue)
+	return i.taskRepo.FindAndLockPending(ctx, taskQueue)
 }
 
 func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error {
-	if err := i.taskRepo.UpdateTaskComplete(taskID, result, errString); err != nil {
+	if err := i.taskRepo.UpdateCompleted(ctx, taskID, result, errString); err != nil {
 		return fmt.Errorf("failed to complete task: %w", err)
 	}
 
-	t, err := i.taskRepo.FindTaskByID(taskID)
+	t, err := i.taskRepo.GetByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("failed to find task: %w", err)
 	}
 
-	exec, err := i.workflowRepo.FindExecutionByID(t.WorkflowExecutionID)
+	exec, err := i.executionRepo.GetByID(ctx, t.WorkflowExecutionID)
 	if err != nil {
 		return fmt.Errorf("failed to find execution: %w", err)
 	}
 
 	if errString != "" {
 		if t.Attempt < t.MaxAttempts {
-			if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+			if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				StepIndex:           &t.StepIndex,
 				StepName:            &t.StepName,
@@ -44,10 +44,10 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			}
 			return nil
 		}
-		if err := i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateFailed); err != nil {
+		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed); err != nil {
 			return fmt.Errorf("failed to mark execution failed: %w", err)
 		}
-		if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
@@ -58,7 +58,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			log.Printf("warn: failed to save history event: %v", err)
 		}
 
-		if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			EventType:           "WorkflowExecutionFailed",
 			Error:               errString,
@@ -71,7 +71,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 
 	if exec.WorkflowType == workflow.IndependentWorkflow {
 		// 1. Write StepCompleted history (best-effort)
-		if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
@@ -83,14 +83,14 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		}
 
 		// 2. Check completed count
-		completedCount, err := i.taskRepo.CountCompletedTasks(exec.ID)
+		completedCount, err := i.taskRepo.CountCompleted(ctx, exec.ID)
 		if err != nil {
 			return fmt.Errorf("failed to count completed tasks: %w", err)
 		}
 
 		if completedCount == exec.TotalSteps {
 			// All steps done! Collect outputs.
-			outputs, err := i.taskRepo.GetAllTaskOutputs(exec.ID)
+			outputs, err := i.taskRepo.GetAllOutputs(ctx, exec.ID)
 			if err != nil {
 				return fmt.Errorf("failed to get task outputs: %w", err)
 			}
@@ -100,13 +100,13 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 				return fmt.Errorf("failed to marshal combined outputs: %w", err)
 			}
 
-			if err := i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateCompleted); err != nil {
+			if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateCompleted); err != nil {
 				return fmt.Errorf("failed to mark execution complete: %w", err)
 			}
-			if err := i.workflowRepo.SaveResult(exec.ID, combinedBytes); err != nil {
+			if err := i.executionRepo.SaveResult(ctx, exec.ID, combinedBytes); err != nil {
 				return fmt.Errorf("failed to save execution result: %w", err)
 			}
-			if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+			if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				EventType:           "WorkflowExecutionCompleted",
 				Payload:             combinedBytes,
@@ -119,7 +119,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 	}
 
 	// CHAIN workflow behavior
-	if err := i.checkpointRepo.SaveCheckpoint(&workflow.Checkpoint{
+	if err := i.checkpointRepo.Save(ctx, &workflow.Checkpoint{
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           t.StepIndex,
 		StateSnapshot:       result,
@@ -129,7 +129,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 	}
 
 	// Write StepCompleted history (best-effort)
-	if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+	if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           &t.StepIndex,
 		StepName:            &t.StepName,
@@ -142,15 +142,15 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 
 	nextIndex := t.StepIndex + 1
 
-	if nextIndex >= exec.TotalSteps {
+	if nextIndex > exec.TotalSteps {
 		// All steps done
-		if err := i.workflowRepo.UpdateExecutionState(exec.ID, workflow.StateCompleted); err != nil {
+		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateCompleted); err != nil {
 			return fmt.Errorf("failed to mark execution complete: %w", err)
 		}
-		if err := i.workflowRepo.SaveResult(exec.ID, result); err != nil {
+		if err := i.executionRepo.SaveResult(ctx, exec.ID, result); err != nil {
 			return fmt.Errorf("failed to save execution result: %w", err)
 		}
-		if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			EventType:           "WorkflowExecutionCompleted",
 			Payload:             result,
@@ -161,13 +161,25 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		return nil
 	}
 
-	nextStep, err := i.workflowRepo.FindStep(exec.WorkflowName, nextIndex)
+	// Fetch step definition
+	steps, err := i.workflowStepRepo.GetStepsByDefinitionID(ctx, exec.WorkflowDefinitionID)
 	if err != nil {
-		return fmt.Errorf("failed to find next step definition: %w", err)
+		return fmt.Errorf("failed to find workflow steps: %w", err)
+	}
+
+	var nextStep *workflow.WorkflowDefinitionStep
+	for _, step := range steps {
+		if step.StepIndex == nextIndex {
+			nextStep = &step
+			break
+		}
+	}
+	if nextStep == nil {
+		return fmt.Errorf("failed to find next step definition with index %d", nextIndex)
 	}
 
 	resolvedQueue := nextStep.TaskQueue
-	if resolvedQueue == "" || resolvedQueue == "default" {
+	if resolvedQueue == "" {
 		resolvedQueue = exec.TaskQueue
 	}
 
@@ -183,15 +195,15 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		MaxAttempts:         3,
 		ScheduledAt:         time.Now(),
 	}
-	if err := i.taskRepo.SaveTask(nextTask); err != nil {
+	if err := i.taskRepo.Create(ctx, nextTask); err != nil {
 		return fmt.Errorf("failed to save next task: %w", err)
 	}
 	i.taskBroker.Notify(resolvedQueue)
 
-	if err := i.workflowRepo.UpdateStepCursor(exec.ID, nextIndex); err != nil {
+	if err := i.executionRepo.UpdateStepCursor(ctx, exec.ID, nextIndex); err != nil {
 		return fmt.Errorf("failed to advance step cursor: %w", err)
 	}
-	if err := i.historyRepo.SaveEvent(&workflow.HistoryEvent{
+	if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           &nextIndex,
 		StepName:            &nextStep.StepName,

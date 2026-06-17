@@ -2,19 +2,17 @@ package workflow
 
 import "fmt"
 
-
 type State string
 
 const (
-	StateCreated   State = "CREATED"
-	StateRunning   State = "RUNNING"
-	StateCompleted State = "COMPLETED"
-	StateFailed    State = "FAILED"
-	StateCancelled State = "CANCELLED"
+	StateCreated       State = "CREATED"
+	StateRunning       State = "RUNNING"
+	StateCompleted     State = "COMPLETED"
+	StateFailed        State = "FAILED"
+	StateCancelled     State = "CANCELLED"
 	ActiveStatusActive State = "ACTIVE"
 	ActiveStatusDELETE State = "DELETED"
 )
-
 
 var validTransitions = map[State][]State{
 	StateCreated:   {StateRunning, StateCancelled},
@@ -37,5 +35,3 @@ func ValidateTransition(current, next State) error {
 func IsTerminal(s State) bool {
 	return len(validTransitions[s]) == 0
 }
-
-

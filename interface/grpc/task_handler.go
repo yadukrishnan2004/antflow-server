@@ -28,7 +28,7 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 			}
 
 			if task != nil {
-				workflowName, err := h.service.GetWorkflowNameForExecution(context.Background(),task.WorkflowExecutionID)
+				workflowName, err := h.service.GetWorkflowNameForExecution(stream.Context(), task.WorkflowExecutionID)
 				if err != nil {
 					return status.Errorf(codes.Internal, "failed to resolve workflow name: %v", err)
 				}
@@ -68,4 +68,3 @@ func (h *WorkflowHandler) CompleteTask(ctx context.Context, req *pb.CompleteTask
 
 	return &pb.CompleteTaskResponse{Success: true}, nil
 }
-

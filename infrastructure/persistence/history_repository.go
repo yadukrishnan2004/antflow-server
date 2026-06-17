@@ -35,10 +35,15 @@ func (s *PostgresHistoryEventRepository) Migrate() error {
 	return err
 }
 
-func (s *PostgresHistoryEventRepository) Create(
+func (s *PostgresHistoryEventRepository) Append(
 	ctx context.Context,
 	event *workflow.HistoryEvent,
 ) error {
+	var errStr *string
+	if event.Error != "" {
+		errStr = &event.Error
+	}
+
 	return s.db.QueryRowContext(
 		ctx,
 		`
@@ -60,9 +65,51 @@ func (s *PostgresHistoryEventRepository) Create(
 		event.StepName,
 		event.EventType,
 		event.Payload,
-		event.Error,
+		errStr,
 	).Scan(
 		&event.ID,
 		&event.CreatedAt,
 	)
+}
+
+func (s *PostgresHistoryEventRepository) GetByExecution(
+	ctx context.Context,
+	executionID string,
+) ([]workflow.HistoryEvent, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, workflow_execution_id, step_index, step_name, event_type, payload, COALESCE(error, ''), created_at
+		 FROM history_event
+		 WHERE workflow_execution_id = $1
+		 ORDER BY id ASC`,
+		executionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []workflow.HistoryEvent
+	for rows.Next() {
+		var event workflow.HistoryEvent
+		if err := rows.Scan(
+			&event.ID,
+			&event.WorkflowExecutionID,
+			&event.StepIndex,
+			&event.StepName,
+			&event.EventType,
+			&event.Payload,
+			&event.Error,
+			&event.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return events, nil
 }

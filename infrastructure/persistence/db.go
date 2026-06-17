@@ -7,7 +7,6 @@ import (
 	_ "github.com/lib/pq"
 )
 
-
 type Storage struct {
 	Namespace              *PostgresNamespaceRepository
 	WorkflowDefinition     *PostgresWorkflowDefinitionRepository
@@ -15,9 +14,8 @@ type Storage struct {
 	WorkflowExecution      *PostgresWorkflowExecutionRepository
 	Task                   *PostgresTaskRepository
 	HistoryEvent           *PostgresHistoryEventRepository
-	Checkpoint  		   *PostgresCheckpointRepository
+	Checkpoint             *PostgresCheckpointRepository
 }
-
 
 type PostgresNamespaceRepository struct {
 	db *sql.DB
@@ -47,7 +45,6 @@ type PostgresCheckpointRepository struct {
 	db *sql.DB
 }
 
-
 func New(dsn string) (*Storage, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -59,15 +56,14 @@ func New(dsn string) (*Storage, error) {
 	}
 
 	storage := &Storage{
-		Namespace: 		    &PostgresNamespaceRepository{db: db},
-		WorkflowDefinition: &PostgresWorkflowDefinitionRepository{db: db},
+		Namespace:              &PostgresNamespaceRepository{db: db},
+		WorkflowDefinition:     &PostgresWorkflowDefinitionRepository{db: db},
 		WorkflowDefinitionStep: &PostgresWorkflowDefinitionStepRepository{db: db},
-		WorkflowExecution: &PostgresWorkflowExecutionRepository{db: db},
-		Task: &PostgresTaskRepository{db: db},
-		HistoryEvent: &PostgresHistoryEventRepository{db: db},
-		Checkpoint: &PostgresCheckpointRepository{db: db},
+		WorkflowExecution:      &PostgresWorkflowExecutionRepository{db: db},
+		Task:                   &PostgresTaskRepository{db: db},
+		HistoryEvent:           &PostgresHistoryEventRepository{db: db},
+		Checkpoint:             &PostgresCheckpointRepository{db: db},
 	}
 
 	return storage, nil
 }
-

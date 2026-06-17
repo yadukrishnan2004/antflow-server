@@ -1,19 +1,21 @@
 package workflow
 
-import "context"
-
+import (
+	"context"
+)
 
 type NamespaceRepository interface {
-	Create(ctx context.Context, ns *Namespace) (error)
+	Create(ctx context.Context, ns *Namespace) error
 	GetByID(ctx context.Context, id string) (*Namespace, error)
 	GetByName(ctx context.Context, name string) (*Namespace, error)
 }
 
 // WorkflowDefinitionRepository manages the static code blueprints.
 type WorkflowDefinitionRepository interface {
-    Create(ctx context.Context, def *WorkflowDefinition) error
-    GetByID(ctx context.Context, id string) (*WorkflowDefinition, error)
-    GetByNamespaceID(ctx context.Context, namespaceID string) ([]WorkflowDefinition, error)
+	Create(ctx context.Context, def *WorkflowDefinition) error
+	GetByID(ctx context.Context, id string) (*WorkflowDefinition, error)
+	GetByName(ctx context.Context, namespaceID string, name string) (*WorkflowDefinition, error)
+	GetByNamespaceID(ctx context.Context, namespaceID string) ([]WorkflowDefinition, error)
 }
 
 // WorkflowDefinitionStepRepository tracks step definitions for sequential tasks.
@@ -24,30 +26,31 @@ type WorkflowDefinitionStepRepository interface {
 
 // WorkflowExecutionRepository tracks the state machine of live workflow runs.
 type WorkflowExecutionRepository interface {
-	Create(ctx context.Context, tx *sql.Tx, exec *WorkflowExecution) error
+	Create(ctx context.Context, exec *WorkflowExecution) error
 	GetByID(ctx context.Context, id string) (*WorkflowExecution, error)
-	
-	// AdvanceState handles strict optimistic locking concurrency checks using next_event_id
-	AdvanceState(ctx context.Context, tx *sql.Tx, id string, expectedEventID int64, newState string, newNextEventID int64) error
-	Complete(ctx context.Context, tx *sql.Tx, id string, result []byte, closeTime time.Time) error
-	Fail(ctx context.Context, tx *sql.Tx, id string, errMessage string, closeTime time.Time) error
+	UpdateState(ctx context.Context, id string, state State) error
+	UpdateStepCursor(ctx context.Context, id string, nextStep int) error
+	SaveResult(ctx context.Context, id string, result []byte) error
 }
 
 // TaskRepository handles processing constraints and execution states for individual workflow tasks.
 type TaskRepository interface {
-	Create(ctx context.Context, tx *sql.Tx, task *Task) error
+	Create(ctx context.Context, task *Task) error
 	GetByID(ctx context.Context, id string) (*Task, error)
-	UpdateState(ctx context.Context, tx *sql.Tx, id string, state string, output []byte, errMessage string) error
+	FindAndLockPending(ctx context.Context, taskQueue string) (*Task, error)
+	UpdateCompleted(ctx context.Context, id string, output []byte, errMsg string) error
+	CountCompleted(ctx context.Context, executionID string) (int, error)
+	GetAllOutputs(ctx context.Context, executionID string) ([]TaskOutput, error)
 }
 
 // HistoryEventRepository records the immutable event stream ledger.
 type HistoryEventRepository interface {
-	AppendEvents(ctx context.Context, tx *sql.Tx, executionID string, events []HistoryEvent) error
-	GetHistoryStream(ctx context.Context, executionID string) ([]HistoryEvent, error)
+	Append(ctx context.Context, event *HistoryEvent) error
+	GetByExecution(ctx context.Context, executionID string) ([]HistoryEvent, error)
 }
 
 // CheckpointRepository captures periodic memory state snapshots for long-running steps.
 type CheckpointRepository interface {
-	Save(ctx context.Context, tx *sql.Tx, checkpoint *Checkpoint) error
-	GetLatestCheckpoint(ctx context.Context, executionID string, stepIndex int) (*Checkpoint, error)
+	Save(ctx context.Context, checkpoint *Checkpoint) error
+	GetLatest(ctx context.Context, executionID string, stepIndex int) (*Checkpoint, error)
 }

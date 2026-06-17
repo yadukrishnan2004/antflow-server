@@ -20,8 +20,43 @@ func main() {
 		log.Fatalf("failed to initialize persistence layer: %v", err)
 	}
 
-	// Initialize the Usecase
-	workflowService := usecase.NewWorkflowService(wRepo, tRepo, cRepo, hRepo)
+	// Migrate database schemas sequentially
+	if err := storage.Namespace.Migrate(); err != nil {
+		log.Fatalf("Namespace migration failed: %v", err)
+	}
+	if err := storage.WorkflowDefinition.Migrate(); err != nil {
+		log.Fatalf("WorkflowDefinition migration failed: %v", err)
+	}
+	if err := storage.WorkflowDefinitionStep.Migrate(); err != nil {
+		log.Fatalf("WorkflowDefinitionStep migration failed: %v", err)
+	}
+	if err := storage.WorkflowExecution.Migrate(); err != nil {
+		log.Fatalf("WorkflowExecution migration failed: %v", err)
+	}
+	if err := storage.Task.Migrate(); err != nil {
+		log.Fatalf("Task migration failed: %v", err)
+	}
+	if err := storage.HistoryEvent.Migrate(); err != nil {
+		log.Fatalf("HistoryEvent migration failed: %v", err)
+	}
+	if err := storage.Checkpoint.Migrate(); err != nil {
+		log.Fatalf("Checkpoint migration failed: %v", err)
+	}
+
+	// Initialize the Task Broker
+	taskBroker := usecase.NewTaskBroker()
+
+	// Initialize the Usecase Service
+	workflowService := usecase.New(
+		storage.Namespace,
+		storage.WorkflowDefinition,
+		storage.WorkflowDefinitionStep,
+		storage.WorkflowExecution,
+		storage.Task,
+		storage.HistoryEvent,
+		storage.Checkpoint,
+		taskBroker,
+	)
 
 	// Initialize the gRPC Handler
 	workflowHandler := appgrpc.NewWorkflowHandler(workflowService)
@@ -30,7 +65,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(1 * time.Minute)
-			if err := tRepo.ResetTimedOutTasks(); err != nil {
+			if err := storage.Task.ResetTimedOutTasks(); err != nil {
 				log.Printf("Failed to reset timed out tasks: %v", err)
 			}
 		}

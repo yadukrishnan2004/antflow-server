@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
@@ -33,7 +34,7 @@ func (s *PostgresCheckpointRepository) Migrate() error {
 	return err
 }
 
-func (s *PostgresCheckpointRepository) Create(
+func (s *PostgresCheckpointRepository) Save(
 	ctx context.Context,
 	checkpoint *workflow.Checkpoint,
 ) error {
@@ -46,6 +47,8 @@ func (s *PostgresCheckpointRepository) Create(
 			state_snapshot
 		)
 		VALUES ($1, $2, $3)
+		ON CONFLICT (workflow_execution_id, step_index)
+		DO UPDATE SET state_snapshot = EXCLUDED.state_snapshot, created_at = NOW()
 		RETURNING
 			id,
 			created_at
@@ -57,4 +60,35 @@ func (s *PostgresCheckpointRepository) Create(
 		&checkpoint.ID,
 		&checkpoint.CreatedAt,
 	)
+}
+
+func (s *PostgresCheckpointRepository) GetLatest(
+	ctx context.Context,
+	executionID string,
+	stepIndex int,
+) (*workflow.Checkpoint, error) {
+	checkpoint := &workflow.Checkpoint{}
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, workflow_execution_id, step_index, state_snapshot, created_at
+		 FROM checkpoint
+		 WHERE workflow_execution_id = $1 AND step_index = $2
+		 ORDER BY id DESC
+		 LIMIT 1`,
+		executionID,
+		stepIndex,
+	).Scan(
+		&checkpoint.ID,
+		&checkpoint.WorkflowExecutionID,
+		&checkpoint.StepIndex,
+		&checkpoint.StateSnapshot,
+		&checkpoint.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, workflow.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return checkpoint, nil
 }
