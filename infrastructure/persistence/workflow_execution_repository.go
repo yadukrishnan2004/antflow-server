@@ -3,7 +3,6 @@ package persistence
 import (
 	"context"
 	"database/sql"
-	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
@@ -16,7 +15,7 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			workflow_definition_id UUID NOT NULL,
 			workflow_name TEXT NOT NULL,
-			task_queue TEXT NOT NULL,
+			task_queue TEXT NOT NULL DEFAULT 'default',
 			total_steps INTEGER NOT NULL,
 			workflow_type TEXT NOT NULL,
 
@@ -111,19 +110,18 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT 
-			id, workflow_definition_id, workflow_name, task_queue, total_steps, workflow_type,
-			input, result, state, COALESCE(error, ''), current_step, created_at, scheduled_at, updated_at, completed_at
-		 FROM workflow_execution 
-		 WHERE id = $1`,
+		`SELECT e.id, e.workflow_definition_id, e.input, e.result,
+		        e.state, COALESCE(e.error, ''), e.current_step, e.created_at,
+		        e.scheduled_at, e.updated_at, e.completed_at,
+		        d.name, d.workflow_type, d.steps,
+		        e.task_queue
+		 FROM workflow_execution e
+		 JOIN workflow_definition d ON d.id = e.workflow_definition_id
+		 WHERE e.id = $1`,
 		id,
 	).Scan(
 		&exec.ID,
 		&exec.WorkflowDefinitionID,
-		&exec.WorkflowName,
-		&exec.TaskQueue,
-		&exec.TotalSteps,
-		&wfTypeStr,
 		&exec.Input,
 		&exec.Result,
 		&stateStr,
@@ -133,6 +131,10 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 		&exec.ScheduledAt,
 		&exec.UpdatedAt,
 		&completedAt,
+		&exec.WorkflowName,
+		&wfTypeStr,
+		&exec.TotalSteps,
+		&exec.TaskQueue,
 	)
 	if err == sql.ErrNoRows {
 		return nil, workflow.ErrNotFound
@@ -155,46 +157,17 @@ func (s *PostgresWorkflowExecutionRepository) UpdateState(
 	id string,
 	state workflow.State,
 ) error {
-	var completedAt sql.NullTime
-	if state == workflow.StateCompleted || state == workflow.StateFailed || state == workflow.StateCancelled {
-		completedAt = sql.NullTime{Time: time.Now(), Valid: true}
-	}
-
-	var res sql.Result
 	var err error
-	if completedAt.Valid {
-		res, err = s.db.ExecContext(
-			ctx,
-			`UPDATE workflow_execution 
-			 SET state = $1, completed_at = $2, updated_at = NOW()
-			 WHERE id = $3`,
-			string(state),
-			completedAt.Time,
-			id,
-		)
+	if state == workflow.StateFailed || state == workflow.StateCancelled {
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE workflow_execution SET state=$1, completed_at=NOW(), updated_at=NOW() WHERE id=$2`,
+			string(state), id)
 	} else {
-		res, err = s.db.ExecContext(
-			ctx,
-			`UPDATE workflow_execution 
-			 SET state = $1, updated_at = NOW()
-			 WHERE id = $2`,
-			string(state),
-			id,
-		)
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE workflow_execution SET state=$1, updated_at=NOW() WHERE id=$2`,
+			string(state), id)
 	}
-	if err != nil {
-		return err
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return workflow.ErrNotFound
-	}
-
-	return nil
+	return err
 }
 
 func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
@@ -202,27 +175,10 @@ func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
 	id string,
 	nextStep int,
 ) error {
-	res, err := s.db.ExecContext(
-		ctx,
-		`UPDATE workflow_execution 
-		 SET current_step = $1, updated_at = NOW()
-		 WHERE id = $2`,
-		nextStep,
-		id,
-	)
-	if err != nil {
-		return err
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return workflow.ErrNotFound
-	}
-
-	return nil
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE workflow_execution SET current_step=$1, updated_at=NOW() WHERE id=$2`,
+		nextStep, id)
+	return err
 }
 
 func (s *PostgresWorkflowExecutionRepository) SaveResult(
@@ -230,25 +186,8 @@ func (s *PostgresWorkflowExecutionRepository) SaveResult(
 	id string,
 	result []byte,
 ) error {
-	res, err := s.db.ExecContext(
-		ctx,
-		`UPDATE workflow_execution 
-		 SET result = $1, updated_at = NOW()
-		 WHERE id = $2`,
-		result,
-		id,
-	)
-	if err != nil {
-		return err
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return workflow.ErrNotFound
-	}
-
-	return nil
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE workflow_execution SET result=$1, completed_at=NOW(), updated_at=NOW() WHERE id=$2`,
+		result, id)
+	return err
 }

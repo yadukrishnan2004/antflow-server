@@ -41,6 +41,8 @@ type TaskRepository interface {
 	UpdateCompleted(ctx context.Context, id string, output []byte, errMsg string) error
 	CountCompleted(ctx context.Context, executionID string) (int, error)
 	GetAllOutputs(ctx context.Context, executionID string) ([]TaskOutput, error)
+	Delete(ctx context.Context, id string) error
+	UpdateState(ctx context.Context, id string, state State) error
 }
 
 // HistoryEventRepository records the immutable event stream ledger.

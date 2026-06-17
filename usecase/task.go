@@ -42,6 +42,10 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			}); err != nil {
 				log.Printf("warn: failed to save history event: %v", err)
 			}
+			// Reset task state back to CREATED so it can be retried
+			if err := i.taskRepo.UpdateState(ctx, t.ID, workflow.StateCreated); err != nil {
+				log.Printf("warn: failed to reset task state for retry: %v", err)
+			}
 			return nil
 		}
 		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed); err != nil {
@@ -66,6 +70,9 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		}); err != nil {
 			log.Printf("warn: failed to save history event: %v", err)
 		}
+
+		// Permanent failure - delete the task row
+		_ = i.taskRepo.Delete(ctx, t.ID)
 		return nil
 	}
 
@@ -115,6 +122,9 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 				log.Printf("warn: failed to save history event: %v", err)
 			}
 		}
+
+		// Completed task - delete the task row
+		_ = i.taskRepo.Delete(ctx, t.ID)
 		return nil
 	}
 
@@ -158,6 +168,9 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		}); err != nil {
 			log.Printf("warn: failed to save history event: %v", err)
 		}
+
+		// Completed task - delete the task row
+		_ = i.taskRepo.Delete(ctx, t.ID)
 		return nil
 	}
 
@@ -213,5 +226,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		log.Printf("warn: failed to save history event: %v", err)
 	}
 
+	// Completed task - delete the task row
+	_ = i.taskRepo.Delete(ctx, t.ID)
 	return nil
 }

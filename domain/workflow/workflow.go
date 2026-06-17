@@ -67,6 +67,8 @@ type WorkflowDefinition struct {
 	NamespaceID  string
 	Name         string
 	WorkflowType string
+	Version      int
+	IsActive     bool
 	Steps        int
 	CreatedAt    time.Time
 }

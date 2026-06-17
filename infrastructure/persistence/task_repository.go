@@ -19,7 +19,7 @@ func (s *PostgresTaskRepository) Migrate() error {
 
 			step_index INTEGER NOT NULL,
 			step_name TEXT NOT NULL,
-			task_queue TEXT NOT NULL,
+			task_queue TEXT NOT NULL DEFAULT 'default',
 
 			input BYTEA NOT NULL,
 			output BYTEA,
@@ -61,8 +61,8 @@ func (s *PostgresTaskRepository) Migrate() error {
 				CHECK (max_attempts > 0)
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_task_state_scheduled_at
-			ON task (state, scheduled_at);
+		CREATE INDEX IF NOT EXISTS idx_task_state_queue_scheduled
+			ON task (state, task_queue, scheduled_at);
 	`)
 	return err
 }
@@ -160,75 +160,48 @@ func (s *PostgresTaskRepository) FindAndLockPending(
 	ctx context.Context,
 	taskQueue string,
 ) (*workflow.Task, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, workflow_execution_id, step_index, step_name,
+		       task_queue, input, state, attempt, max_attempts, scheduled_at
+		FROM task
+		WHERE state = 'CREATED'
+		  AND task_queue = $1
+		  AND scheduled_at <= NOW()
+		ORDER BY scheduled_at ASC
+		LIMIT 1
+		FOR UPDATE SKIP LOCKED
+	`, taskQueue)
 
-	task := &workflow.Task{}
+	t := &workflow.Task{}
 	var stateStr string
-	var startedAt sql.NullTime
-	var completedAt sql.NullTime
-	var lockedUntil sql.NullTime
-
-	err = tx.QueryRowContext(
-		ctx,
-		`SELECT id, workflow_execution_id, step_index, step_name, task_queue, input, output, state, COALESCE(error, ''), scheduled_at, started_at, completed_at, locked_until, attempt, max_attempts
-		 FROM task
-		 WHERE task_queue = $1 AND (state = 'CREATED' OR (state = 'RUNNING' AND locked_until < NOW()))
-		 ORDER BY scheduled_at ASC
-		 LIMIT 1
-		 FOR UPDATE SKIP LOCKED`,
-		taskQueue,
-	).Scan(
-		&task.ID,
-		&task.WorkflowExecutionID,
-		&task.StepIndex,
-		&task.StepName,
-		&task.TaskQueue,
-		&task.Input,
-		&task.Output,
-		&stateStr,
-		&task.Error,
-		&task.ScheduledAt,
-		&startedAt,
-		&completedAt,
-		&lockedUntil,
-		&task.Attempt,
-		&task.MaxAttempts,
+	err := row.Scan(
+		&t.ID, &t.WorkflowExecutionID, &t.StepIndex, &t.StepName,
+		&t.TaskQueue, &t.Input, &stateStr, &t.Attempt, &t.MaxAttempts,
+		&t.ScheduledAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, nil // No task found
+		return nil, nil // no work available
 	}
 	if err != nil {
 		return nil, err
 	}
+	t.State = workflow.State(stateStr)
 
-	// Lock the task for 5 minutes
-	newLockedUntil := time.Now().Add(5 * time.Minute)
-	_, err = tx.ExecContext(
-		ctx,
-		`UPDATE task
-		 SET state = 'RUNNING', locked_until = $1, started_at = NOW(), attempt = attempt + 1
-		 WHERE id = $2`,
-		newLockedUntil,
-		task.ID,
-	)
+	// Mark it RUNNING immediately
+	lockedUntil := time.Now().Add(5 * time.Minute)
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE task SET state = 'RUNNING', started_at = NOW(), locked_until = $1, attempt = attempt + 1 WHERE id = $2`,
+		lockedUntil, t.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
+	t.State = workflow.StateRunning
+	t.LockedUntil = lockedUntil
+	t.StartedAt = time.Now()
+	t.Attempt++
 
-	task.State = workflow.StateRunning
-	task.LockedUntil = newLockedUntil
-	task.StartedAt = time.Now()
-	task.Attempt++
-
-	return task, nil
+	return t, nil
 }
 
 func (s *PostgresTaskRepository) UpdateCompleted(
@@ -237,36 +210,24 @@ func (s *PostgresTaskRepository) UpdateCompleted(
 	output []byte,
 	errMsg string,
 ) error {
-	var state workflow.State
+	state := "COMPLETED"
 	if errMsg != "" {
-		state = workflow.StateFailed
-	} else {
-		state = workflow.StateCompleted
+		state = "FAILED"
 	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE task SET state=$1, output=$2, error=$3, completed_at=NOW() WHERE id=$4
+	`, state, output, errMsg, id)
+	return err
+}
 
-	res, err := s.db.ExecContext(
-		ctx,
-		`UPDATE task
-		 SET state = $1, output = $2, error = $3, completed_at = NOW()
-		 WHERE id = $4`,
-		string(state),
-		output,
-		errMsg,
-		id,
-	)
-	if err != nil {
-		return err
-	}
+func (s *PostgresTaskRepository) Delete(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM task WHERE id = $1`, id)
+	return err
+}
 
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return workflow.ErrNotFound
-	}
-
-	return nil
+func (s *PostgresTaskRepository) UpdateState(ctx context.Context, id string, state workflow.State) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE task SET state = $1, locked_until = NULL WHERE id = $2`, string(state), id)
+	return err
 }
 
 func (s *PostgresTaskRepository) CountCompleted(
