@@ -164,9 +164,8 @@ func (s *PostgresTaskRepository) FindAndLockPending(
 		SELECT id, workflow_execution_id, step_index, step_name,
 		       task_queue, input, state, attempt, max_attempts, scheduled_at
 		FROM task
-		WHERE state = 'CREATED'
-		  AND task_queue = $1
-		  AND scheduled_at <= NOW()
+		WHERE (state = 'CREATED' AND task_queue = $1 AND scheduled_at <= NOW())
+		   OR (state = 'RUNNING' AND task_queue = $1 AND started_at < NOW() - INTERVAL '5 minutes')
 		ORDER BY scheduled_at ASC
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED

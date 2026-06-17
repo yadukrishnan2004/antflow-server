@@ -24,7 +24,7 @@ func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkfl
 
 	return &pb.StartWorkflowResponse{
 		Id:         exec.ID,
-		WorkflowId: exec.ID,
+		WorkflowId: exec.WorkflowName,
 		Name:       exec.WorkflowName,
 		State:      string(exec.State),
 	}, nil

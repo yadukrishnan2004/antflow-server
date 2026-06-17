@@ -110,14 +110,13 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT e.id, e.workflow_definition_id, e.input, e.result,
-		        e.state, COALESCE(e.error, ''), e.current_step, e.created_at,
-		        e.scheduled_at, e.updated_at, e.completed_at,
-		        d.name, d.workflow_type, d.steps,
-		        e.task_queue
-		 FROM workflow_execution e
-		 JOIN workflow_definition d ON d.id = e.workflow_definition_id
-		 WHERE e.id = $1`,
+		`SELECT id, workflow_definition_id, input, result,
+		        state, COALESCE(error, ''), current_step, created_at,
+		        scheduled_at, updated_at, completed_at,
+		        workflow_name, workflow_type, total_steps,
+		        task_queue
+		 FROM workflow_execution
+		 WHERE id = $1`,
 		id,
 	).Scan(
 		&exec.ID,

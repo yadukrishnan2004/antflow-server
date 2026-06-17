@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net"
-	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/api/grpc/pb"
 	"github.com/yadukrishnan2004/antflow-server/infrastructure/persistence"
@@ -43,9 +42,6 @@ func main() {
 		log.Fatalf("Checkpoint migration failed: %v", err)
 	}
 
-	// Initialize the Task Broker
-	taskBroker := usecase.NewTaskBroker()
-
 	// Initialize the Usecase Service
 	workflowService := usecase.New(
 		storage.Namespace,
@@ -55,21 +51,10 @@ func main() {
 		storage.Task,
 		storage.HistoryEvent,
 		storage.Checkpoint,
-		taskBroker,
 	)
 
 	// Initialize the gRPC Handler
 	workflowHandler := appgrpc.NewWorkflowHandler(workflowService)
-
-	// Start background task to reset timed-out tasks
-	go func() {
-		for {
-			time.Sleep(1 * time.Minute)
-			if err := storage.Task.ResetTimedOutTasks(); err != nil {
-				log.Printf("Failed to reset timed out tasks: %v", err)
-			}
-		}
-	}()
 
 	// Create and Start the gRPC Server
 	lis, err := net.Listen("tcp", ":50051")
@@ -80,7 +65,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	pb.RegisterWorkflowServiceServer(grpcServer, workflowHandler)
 
-	log.Println("Starting gRPC server on port 50051...")
+	log.Println("AntFlow server listening on :50051")
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("failed to serve gRPC server: %v", err)
 	}

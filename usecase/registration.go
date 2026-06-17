@@ -28,12 +28,22 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 		}
 	}
 
+	// Check if the workflow definition already exists and is active
+	existingDef, err := w.workflowDefRepo.GetByName(ctx, ns.ID, name)
+	if err == nil && existingDef != nil {
+		return existingDef, nil
+	}
+	if err != nil && !errors.Is(err, workflow.ErrNotFound) {
+		return nil, fmt.Errorf("failed to check existing workflow definition: %w", err)
+	}
+
 	wf := &workflow.WorkflowDefinition{
 		ID:           uuid.New().String(),
 		NamespaceID:  ns.ID,
 		Name:         name,
 		WorkflowType: workflowType,
 		Steps:        len(stepNames),
+		IsActive:     true,
 		CreatedAt:    time.Now(),
 	}
 

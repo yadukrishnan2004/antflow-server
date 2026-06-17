@@ -37,7 +37,6 @@ func New(
 	taskRepo workflow.TaskRepository,
 	historyRepo workflow.HistoryEventRepository,
 	checkpointRepo workflow.CheckpointRepository,
-	broker *TaskBroker,
 ) WorkflowService {
 	return &workflowInteractor{
 		namespaceRepo:    namespaceRepo,
@@ -47,7 +46,7 @@ func New(
 		taskRepo:         taskRepo,
 		historyRepo:      historyRepo,
 		checkpointRepo:   checkpointRepo,
-		broker:           broker,
+		broker:           NewTaskBroker(),
 	}
 }
 
