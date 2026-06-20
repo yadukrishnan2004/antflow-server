@@ -105,17 +105,27 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			log.Printf("warn: failed to save history event: %v", err)
 		}
 
-		// 2. Check completed count
-		completedCount, err := i.taskRepo.CountCompleted(ctx, exec.ID)
+		// 2. Atomically increment the completed-steps counter on the execution
+		// row. This replaces the old CountCompleted(taskRepo) approach, which
+		// queried the task table for completed rows — but completed task rows
+		// are deleted immediately after processing (see below), so counting
+		// them raced with concurrent deletes from other goroutines and could
+		// undercount. IncrementCompletedSteps does a single atomic
+		// UPDATE...RETURNING, so it can't miss or double-count.
+		newCount, err := i.executionRepo.IncrementCompletedSteps(ctx, exec.ID)
 		if err != nil {
-			return fmt.Errorf("failed to count completed tasks: %w", err)
+			return fmt.Errorf("failed to increment completed steps: %w", err)
 		}
 
-		if completedCount == exec.TotalSteps {
-			// All steps done! Collect outputs.
-			outputs, err := i.taskRepo.GetAllOutputs(ctx, exec.ID)
+		if newCount == exec.TotalSteps {
+			// All steps done! Collect outputs from history_event rather than
+			// the task table — task rows for completed steps are deleted
+			// (see the Delete call below), so GetAllOutputs against the task
+			// repo would find nothing. STEP_COMPLETED history events are
+			// permanent and carry the same payload, ordered by step_index.
+			outputs, err := i.historyRepo.GetStepOutputs(ctx, exec.ID)
 			if err != nil {
-				return fmt.Errorf("failed to get task outputs: %w", err)
+				return fmt.Errorf("failed to get step outputs: %w", err)
 			}
 
 			combinedBytes, err := json.Marshal(outputs)
