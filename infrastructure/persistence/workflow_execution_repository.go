@@ -38,6 +38,8 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 			scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			completed_at TIMESTAMPTZ,
+			compensation_total    INTEGER     NOT NULL DEFAULT 0,
+			compensation_done     INTEGER     NOT NULL DEFAULT 0,
 
 			CONSTRAINT fk_workflow_execution_definition
 				FOREIGN KEY (workflow_definition_id)
@@ -45,7 +47,7 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 				ON DELETE CASCADE,
 
 			CONSTRAINT chk_workflow_execution_state
-				CHECK (state IN ('CREATED','RUNNING','COMPLETED','FAILED','CANCELLED')),
+				CHECK (state IN ('CREATED','RUNNING','COMPLETED','FAILED','CANCELLED','COMPENSATING')),
 
 			CONSTRAINT chk_workflow_execution_current_step
 				CHECK (current_step >= 0),
@@ -53,6 +55,13 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 			CONSTRAINT chk_workflow_execution_completed_steps
 				CHECK (completed_steps >= 0)
 		);
+
+		ALTER TABLE workflow_execution ADD COLUMN IF NOT EXISTS compensation_total INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE workflow_execution ADD COLUMN IF NOT EXISTS compensation_done INTEGER NOT NULL DEFAULT 0;
+
+		ALTER TABLE workflow_execution DROP CONSTRAINT IF EXISTS chk_workflow_execution_state;
+		ALTER TABLE workflow_execution ADD CONSTRAINT chk_workflow_execution_state
+			CHECK (state IN ('CREATED','RUNNING','COMPLETED','FAILED','CANCELLED','COMPENSATING'));
 	`)
 	return err
 }
@@ -65,8 +74,9 @@ func (s *PostgresWorkflowExecutionRepository) Create(
 			(id, workflow_definition_id, workflow_name, task_queue,
 			 total_steps, completed_steps, workflow_type,
 			 input, state, current_step,
-			 scheduled_at, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+			 scheduled_at, created_at, updated_at,
+			 compensation_total, compensation_done)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		RETURNING created_at, updated_at
 	`,
 		exec.ID,
@@ -82,6 +92,8 @@ func (s *PostgresWorkflowExecutionRepository) Create(
 		exec.ScheduledAt,
 		exec.CreatedAt,
 		exec.UpdatedAt,
+		exec.CompensationTotal,
+		exec.CompensationDone,
 	).Scan(&exec.CreatedAt, &exec.UpdatedAt)
 }
 
@@ -96,7 +108,8 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 		SELECT id, workflow_definition_id, input, result,
 		       state, COALESCE(error,''), current_step, completed_steps,
 		       created_at, scheduled_at, updated_at, completed_at,
-		       workflow_name, workflow_type, total_steps, task_queue
+		       workflow_name, workflow_type, total_steps, task_queue,
+		       compensation_total, compensation_done
 		FROM   workflow_execution
 		WHERE  id = $1
 	`, id).Scan(
@@ -116,6 +129,8 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 		&wfTypeStr,
 		&exec.TotalSteps,
 		&exec.TaskQueue,
+		&exec.CompensationTotal,
+		&exec.CompensationDone,
 	)
 	if err == sql.ErrNoRows {
 		return nil, workflow.ErrNotFound
@@ -185,6 +200,30 @@ func (s *PostgresWorkflowExecutionRepository) IncrementCompletedSteps(
 		id,
 	).Scan(&newCount)
 	return newCount, err
+}
+
+func (s *PostgresWorkflowExecutionRepository) IncrementCompensationDone(
+	ctx context.Context, id string,
+) (newCount int, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`UPDATE workflow_execution
+		 SET    compensation_done = compensation_done + 1, updated_at = NOW()
+		 WHERE  id = $1
+		 RETURNING compensation_done`,
+		id,
+	).Scan(&newCount)
+	return newCount, err
+}
+
+func (s *PostgresWorkflowExecutionRepository) SetCompensationTotal(
+	ctx context.Context, id string, total int,
+) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE workflow_execution
+		 SET    compensation_total = $1, updated_at = NOW()
+		 WHERE  id = $2`,
+		total, id)
+	return err
 }
 
 var _ workflow.WorkflowExecutionRepository = (*PostgresWorkflowExecutionRepository)(nil)

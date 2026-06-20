@@ -17,6 +17,7 @@ type Storage struct {
 	Task                   *PostgresTaskRepository
 	HistoryEvent           *PostgresHistoryEventRepository
 	Checkpoint             *PostgresCheckpointRepository
+	CompensationTask       *PostgresCompensationTaskRepository
 }
 
 type PostgresNamespaceRepository struct{ db *sql.DB }
@@ -83,5 +84,6 @@ func New(dsn string, cfg ...DBConfig) (*Storage, error) {
 		Task:                   &PostgresTaskRepository{db: db},
 		HistoryEvent:           &PostgresHistoryEventRepository{db: db},
 		Checkpoint:             &PostgresCheckpointRepository{db: db},
+		CompensationTask:       &PostgresCompensationTaskRepository{db: db},
 	}, nil
 }

@@ -41,6 +41,9 @@ func main() {
 	if err := storage.Checkpoint.Migrate(); err != nil {
 		log.Fatalf("Checkpoint migration failed: %v", err)
 	}
+	if err := storage.CompensationTask.Migrate(); err != nil {
+		log.Fatalf("CompensationTask migration failed: %v", err)
+	}
 
 	// Initialize the Usecase Service
 	workflowService := usecase.New(
@@ -49,6 +52,7 @@ func main() {
 		storage.WorkflowDefinitionStep,
 		storage.WorkflowExecution,
 		storage.Task,
+		storage.CompensationTask,
 		storage.HistoryEvent,
 		storage.Checkpoint,
 	)

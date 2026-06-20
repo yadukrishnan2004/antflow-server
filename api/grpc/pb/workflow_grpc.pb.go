@@ -19,13 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	WorkflowService_RegisterWorkflow_FullMethodName      = "/workflow.WorkflowService/RegisterWorkflow"
-	WorkflowService_StartWorkflow_FullMethodName         = "/workflow.WorkflowService/StartWorkflow"
-	WorkflowService_StreamTasks_FullMethodName           = "/workflow.WorkflowService/StreamTasks"
-	WorkflowService_CompleteTask_FullMethodName          = "/workflow.WorkflowService/CompleteTask"
-	WorkflowService_GetWorkflowResult_FullMethodName     = "/workflow.WorkflowService/GetWorkflowResult"
-	WorkflowService_CancelWorkflow_FullMethodName        = "/workflow.WorkflowService/CancelWorkflow"
-	WorkflowService_StreamWorkflowHistory_FullMethodName = "/workflow.WorkflowService/StreamWorkflowHistory"
+	WorkflowService_RegisterWorkflow_FullMethodName         = "/workflow.WorkflowService/RegisterWorkflow"
+	WorkflowService_StartWorkflow_FullMethodName            = "/workflow.WorkflowService/StartWorkflow"
+	WorkflowService_StreamTasks_FullMethodName              = "/workflow.WorkflowService/StreamTasks"
+	WorkflowService_CompleteTask_FullMethodName             = "/workflow.WorkflowService/CompleteTask"
+	WorkflowService_StreamCompensationTasks_FullMethodName  = "/workflow.WorkflowService/StreamCompensationTasks"
+	WorkflowService_CompleteCompensationTask_FullMethodName = "/workflow.WorkflowService/CompleteCompensationTask"
+	WorkflowService_GetWorkflowResult_FullMethodName        = "/workflow.WorkflowService/GetWorkflowResult"
+	WorkflowService_CancelWorkflow_FullMethodName           = "/workflow.WorkflowService/CancelWorkflow"
+	WorkflowService_StreamWorkflowHistory_FullMethodName    = "/workflow.WorkflowService/StreamWorkflowHistory"
 )
 
 // WorkflowServiceClient is the client API for WorkflowService service.
@@ -36,6 +38,8 @@ type WorkflowServiceClient interface {
 	StartWorkflow(ctx context.Context, in *StartWorkflowRequest, opts ...grpc.CallOption) (*StartWorkflowResponse, error)
 	StreamTasks(ctx context.Context, in *StreamTasksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[StreamTaskResponse], error)
 	CompleteTask(ctx context.Context, in *CompleteTaskRequest, opts ...grpc.CallOption) (*CompleteTaskResponse, error)
+	StreamCompensationTasks(ctx context.Context, in *StreamTasksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CompensationTaskResponse], error)
+	CompleteCompensationTask(ctx context.Context, in *CompleteCompensationTaskRequest, opts ...grpc.CallOption) (*CompleteCompensationTaskResponse, error)
 	GetWorkflowResult(ctx context.Context, in *GetWorkflowResultRequest, opts ...grpc.CallOption) (*GetWorkflowResultResponse, error)
 	CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error)
 	StreamWorkflowHistory(ctx context.Context, in *StreamWorkflowHistoryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HistoryEvent], error)
@@ -98,6 +102,35 @@ func (c *workflowServiceClient) CompleteTask(ctx context.Context, in *CompleteTa
 	return out, nil
 }
 
+func (c *workflowServiceClient) StreamCompensationTasks(ctx context.Context, in *StreamTasksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CompensationTaskResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkflowService_ServiceDesc.Streams[1], WorkflowService_StreamCompensationTasks_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamTasksRequest, CompensationTaskResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkflowService_StreamCompensationTasksClient = grpc.ServerStreamingClient[CompensationTaskResponse]
+
+func (c *workflowServiceClient) CompleteCompensationTask(ctx context.Context, in *CompleteCompensationTaskRequest, opts ...grpc.CallOption) (*CompleteCompensationTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteCompensationTaskResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_CompleteCompensationTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *workflowServiceClient) GetWorkflowResult(ctx context.Context, in *GetWorkflowResultRequest, opts ...grpc.CallOption) (*GetWorkflowResultResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetWorkflowResultResponse)
@@ -120,7 +153,7 @@ func (c *workflowServiceClient) CancelWorkflow(ctx context.Context, in *CancelWo
 
 func (c *workflowServiceClient) StreamWorkflowHistory(ctx context.Context, in *StreamWorkflowHistoryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HistoryEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &WorkflowService_ServiceDesc.Streams[1], WorkflowService_StreamWorkflowHistory_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &WorkflowService_ServiceDesc.Streams[2], WorkflowService_StreamWorkflowHistory_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +178,8 @@ type WorkflowServiceServer interface {
 	StartWorkflow(context.Context, *StartWorkflowRequest) (*StartWorkflowResponse, error)
 	StreamTasks(*StreamTasksRequest, grpc.ServerStreamingServer[StreamTaskResponse]) error
 	CompleteTask(context.Context, *CompleteTaskRequest) (*CompleteTaskResponse, error)
+	StreamCompensationTasks(*StreamTasksRequest, grpc.ServerStreamingServer[CompensationTaskResponse]) error
+	CompleteCompensationTask(context.Context, *CompleteCompensationTaskRequest) (*CompleteCompensationTaskResponse, error)
 	GetWorkflowResult(context.Context, *GetWorkflowResultRequest) (*GetWorkflowResultResponse, error)
 	CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error)
 	StreamWorkflowHistory(*StreamWorkflowHistoryRequest, grpc.ServerStreamingServer[HistoryEvent]) error
@@ -169,6 +204,12 @@ func (UnimplementedWorkflowServiceServer) StreamTasks(*StreamTasksRequest, grpc.
 }
 func (UnimplementedWorkflowServiceServer) CompleteTask(context.Context, *CompleteTaskRequest) (*CompleteTaskResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CompleteTask not implemented")
+}
+func (UnimplementedWorkflowServiceServer) StreamCompensationTasks(*StreamTasksRequest, grpc.ServerStreamingServer[CompensationTaskResponse]) error {
+	return status.Error(codes.Unimplemented, "method StreamCompensationTasks not implemented")
+}
+func (UnimplementedWorkflowServiceServer) CompleteCompensationTask(context.Context, *CompleteCompensationTaskRequest) (*CompleteCompensationTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompleteCompensationTask not implemented")
 }
 func (UnimplementedWorkflowServiceServer) GetWorkflowResult(context.Context, *GetWorkflowResultRequest) (*GetWorkflowResultResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetWorkflowResult not implemented")
@@ -265,6 +306,35 @@ func _WorkflowService_CompleteTask_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkflowService_StreamCompensationTasks_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamTasksRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(WorkflowServiceServer).StreamCompensationTasks(m, &grpc.GenericServerStream[StreamTasksRequest, CompensationTaskResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkflowService_StreamCompensationTasksServer = grpc.ServerStreamingServer[CompensationTaskResponse]
+
+func _WorkflowService_CompleteCompensationTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteCompensationTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).CompleteCompensationTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_CompleteCompensationTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).CompleteCompensationTask(ctx, req.(*CompleteCompensationTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _WorkflowService_GetWorkflowResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetWorkflowResultRequest)
 	if err := dec(in); err != nil {
@@ -332,6 +402,10 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _WorkflowService_CompleteTask_Handler,
 		},
 		{
+			MethodName: "CompleteCompensationTask",
+			Handler:    _WorkflowService_CompleteCompensationTask_Handler,
+		},
+		{
 			MethodName: "GetWorkflowResult",
 			Handler:    _WorkflowService_GetWorkflowResult_Handler,
 		},
@@ -344,6 +418,11 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamTasks",
 			Handler:       _WorkflowService_StreamTasks_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamCompensationTasks",
+			Handler:       _WorkflowService_StreamCompensationTasks_Handler,
 			ServerStreams: true,
 		},
 		{

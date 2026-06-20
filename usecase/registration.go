@@ -10,7 +10,7 @@ import (
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
 
-func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string) (*workflow.WorkflowDefinition, error) {
+func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string) (*workflow.WorkflowDefinition, error) {
 
 	ns, err := w.namespaceRepo.GetByName(ctx, name)
 	if err != nil {
@@ -37,7 +37,7 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 			return nil, fmt.Errorf("failed to load existing steps: %w", err)
 		}
 
-		if stepListsEqual(existingSteps, stepNames) {
+		if stepListsEqual(existingSteps, stepNames, compensationStepNames) {
 			return existingDef, nil
 		}
 
@@ -65,10 +65,15 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 	}
 
 	for idx, stepName := range stepNames {
+		var compName string
+		if idx < len(compensationStepNames) {
+			compName = compensationStepNames[idx]
+		}
 		step := &workflow.WorkflowDefinitionStep{
 			ID:                   uuid.New().String(),
 			WorkflowDefinitionID: wf.ID,
 			StepName:             stepName,
+			CompensationStepName: compName,
 			StepIndex:            idx + 1,
 		}
 		if err := w.workflowStepRepo.Create(ctx, step); err != nil {
@@ -79,12 +84,19 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 }
 
 
-func stepListsEqual(existing []workflow.WorkflowDefinitionStep, requested []string) bool {
-	if len(existing) != len(requested) {
+func stepListsEqual(existing []workflow.WorkflowDefinitionStep, requestedSteps []string, requestedCompensations []string) bool {
+	if len(existing) != len(requestedSteps) {
 		return false
 	}
 	for i, step := range existing {
-		if step.StepName != requested[i] {
+		if step.StepName != requestedSteps[i] {
+			return false
+		}
+		var reqComp string
+		if i < len(requestedCompensations) {
+			reqComp = requestedCompensations[i]
+		}
+		if step.CompensationStepName != reqComp {
 			return false
 		}
 	}

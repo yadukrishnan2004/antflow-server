@@ -35,6 +35,7 @@ type WorkflowDefinitionStepRepository interface {
 
 	GetStepsByDefinitionID(ctx context.Context, definitionID string) ([]WorkflowDefinitionStep, error)
 	GetByDefinitionAndIndex(ctx context.Context, definitionID string, stepIndex int) (*WorkflowDefinitionStep, error)
+	GetCompensationSteps(ctx context.Context, definitionID string, upToStepIndex int) ([]WorkflowDefinitionStep, error)
 }
 
 // WorkflowExecutionRepository tracks the state machine of live workflow runs.
@@ -51,6 +52,8 @@ type WorkflowExecutionRepository interface {
 	// atomic UPDATE avoids the race condition that exists when you COUNT(*)
 	// task rows and then delete them from separate goroutines.
 	IncrementCompletedSteps(ctx context.Context, id string) (newCount int, err error)
+	IncrementCompensationDone(ctx context.Context, id string) (newCount int, err error)
+	SetCompensationTotal(ctx context.Context, id string, total int) error
 }
 
 // TaskRepository handles processing constraints and execution states for individual workflow tasks.
@@ -106,4 +109,13 @@ type HistoryEventRepository interface {
 type CheckpointRepository interface {
 	Save(ctx context.Context, checkpoint *Checkpoint) error
 	GetLatest(ctx context.Context, executionID string, stepIndex int) (*Checkpoint, error)
+}
+
+type CompensationTaskRepository interface {
+	Create(ctx context.Context, task *CompensationTask) error
+	GetByID(ctx context.Context, id string) (*CompensationTask, error)
+	FindAndLockPending(ctx context.Context, taskQueue string) (*CompensationTask, error)
+	UpdateCompleted(ctx context.Context, id string, output []byte, errMsg string) error
+	Delete(ctx context.Context, id string) error
+	GetPendingByExecution(ctx context.Context, executionID string) ([]CompensationTask, error)
 }

@@ -5,19 +5,21 @@ import "fmt"
 type State string
 
 const (
-	StateCreated   State = "CREATED"
-	StateRunning   State = "RUNNING"
-	StateCompleted State = "COMPLETED"
-	StateFailed    State = "FAILED"
-	StateCancelled State = "CANCELLED"
+	StateCreated      State = "CREATED"
+	StateRunning      State = "RUNNING"
+	StateCompensating State = "COMPENSATING"
+	StateCompleted    State = "COMPLETED"
+	StateFailed       State = "FAILED"
+	StateCancelled    State = "CANCELLED"
 )
 
 var validTransitions = map[State][]State{
-	StateCreated:   {StateRunning, StateCancelled},
-	StateRunning:   {StateCompleted, StateFailed, StateCancelled},
-	StateCompleted: {},
-	StateFailed:    {},
-	StateCancelled: {},
+	StateCreated:      {StateRunning, StateCancelled},
+	StateRunning:      {StateCompleted, StateFailed, StateCancelled, StateCompensating},
+	StateCompensating: {StateFailed, StateCancelled},
+	StateCompleted:    {},
+	StateFailed:       {},
+	StateCancelled:    {},
 }
 
 func ValidateTransition(current, next State) error {

@@ -14,4 +14,11 @@ const (
 	EventStepCompleted EventType = "STEP_COMPLETED"
 	EventStepFailed    EventType = "STEP_FAILED"
 	EventStepRetrying  EventType = "STEP_RETRYING"
+
+	// Saga-level events
+	EventCompensationStarted   EventType = "COMPENSATION_STARTED"
+	EventCompensationCompleted EventType = "COMPENSATION_COMPLETED"
+	EventCompensationFailed    EventType = "COMPENSATION_FAILED"
+	EventSagaRolledBack        EventType = "SAGA_ROLLED_BACK"
+	EventSagaRollbackFailed    EventType = "SAGA_ROLLBACK_FAILED"
 )

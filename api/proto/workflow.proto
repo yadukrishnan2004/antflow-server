@@ -11,6 +11,8 @@ service WorkflowService {
   rpc StartWorkflow (StartWorkflowRequest) returns (StartWorkflowResponse);
   rpc StreamTasks (StreamTasksRequest) returns (stream StreamTaskResponse);
   rpc CompleteTask (CompleteTaskRequest) returns (CompleteTaskResponse);
+  rpc StreamCompensationTasks (StreamTasksRequest) returns (stream CompensationTaskResponse);
+  rpc CompleteCompensationTask (CompleteCompensationTaskRequest) returns (CompleteCompensationTaskResponse);
   rpc GetWorkflowResult (GetWorkflowResultRequest) returns (GetWorkflowResultResponse);
   rpc CancelWorkflow (CancelWorkflowRequest) returns (CancelWorkflowResponse);
   rpc StreamWorkflowHistory (StreamWorkflowHistoryRequest) returns (stream HistoryEvent);
@@ -20,6 +22,7 @@ message RegisterWorkflowRequest {
   string name = 1;
   string workflow_type = 2;
   repeated string steps = 3;
+  repeated string compensation_steps = 4;
 }
 
 message RegisterWorkflowResponse {
@@ -70,6 +73,27 @@ message CompleteTaskRequest {
 }
 
 message CompleteTaskResponse {
+  bool success = 1;
+}
+
+message CompensationTaskResponse {
+  string task_id = 1;
+  string workflow_id = 2;
+  string name = 3;
+  bytes input = 4;
+  string step_name = 5;
+  string compensation_step_name = 6;
+  int32 step_index = 7;
+}
+
+message CompleteCompensationTaskRequest {
+  string task_id = 1;
+  string worker_id = 2;
+  bytes result = 3;
+  string error = 4;
+}
+
+message CompleteCompensationTaskResponse {
   bool success = 1;
 }
 

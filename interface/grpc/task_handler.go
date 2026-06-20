@@ -71,3 +71,64 @@ func (h *WorkflowHandler) CompleteTask(ctx context.Context, req *pb.CompleteTask
 
 	return &pb.CompleteTaskResponse{Success: true}, nil
 }
+
+func (h *WorkflowHandler) StreamCompensationTasks(req *pb.StreamTasksRequest, stream pb.WorkflowService_StreamCompensationTasksServer) error {
+	taskQueue := req.TaskQueue
+	if taskQueue == "" {
+		taskQueue = "default"
+	}
+
+	ch, unsubscribe := h.service.SubscribeToQueue(taskQueue)
+	defer unsubscribe()
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		default:
+			task, err := h.service.PollCompensationTask(stream.Context(), taskQueue)
+			if err != nil {
+				return status.Errorf(codes.Internal, "failed to poll compensation task: %v", err)
+			}
+
+			if task != nil {
+				workflowName, err := h.service.GetWorkflowNameForExecution(stream.Context(), task.WorkflowExecutionID)
+				if err != nil {
+					return status.Errorf(codes.Internal, "failed to resolve workflow name: %v", err)
+				}
+				err = stream.Send(&pb.CompensationTaskResponse{
+					TaskId:               task.ID,
+					WorkflowId:           task.WorkflowExecutionID,
+					Name:                 workflowName,
+					StepName:             task.StepName,
+					CompensationStepName: task.CompensationStepName,
+					StepIndex:            int32(task.StepIndex),
+					Input:                task.Input,
+				})
+				if err != nil {
+					return err
+				}
+			} else {
+				select {
+				case <-stream.Context().Done():
+					return stream.Context().Err()
+				case <-ch:
+				case <-time.After(1 * time.Second):
+				}
+			}
+		}
+	}
+}
+
+func (h *WorkflowHandler) CompleteCompensationTask(ctx context.Context, req *pb.CompleteCompensationTaskRequest) (*pb.CompleteCompensationTaskResponse, error) {
+	if req.TaskId == "" {
+		return nil, status.Error(codes.InvalidArgument, "task id is required")
+	}
+
+	err := h.service.CompleteCompensationTask(ctx, req.TaskId, req.Result, req.Error)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to complete compensation task: %v", err)
+	}
+
+	return &pb.CompleteCompensationTaskResponse{Success: true}, nil
+}

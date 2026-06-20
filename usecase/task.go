@@ -80,6 +80,30 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			return nil
 		}
 
+		if exec.WorkflowType == workflow.SagaWorkflow {
+			_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				StepIndex:           &t.StepIndex,
+				StepName:            &t.StepName,
+				EventType:           workflow.EventStepFailed,
+				Error:               errString,
+				CreatedAt:           time.Now(),
+			})
+
+			if err := i.startCompensation(ctx, exec, t.StepIndex-1); err != nil {
+				log.Printf("error: failed to start saga compensation: %v", err)
+				_ = i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed)
+				_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
+					WorkflowExecutionID: exec.ID,
+					EventType:           workflow.EventWorkflowFailed,
+					Error:               fmt.Sprintf("Saga compensation start failed: %v", err),
+					CreatedAt:           time.Now(),
+				})
+			}
+			_ = i.taskRepo.Delete(ctx, t.ID)
+			return nil
+		}
+
 		if err := workflow.ValidateTransition(exec.State, workflow.StateFailed); err != nil {
 			return fmt.Errorf("cannot mark execution failed: %w", err)
 		}

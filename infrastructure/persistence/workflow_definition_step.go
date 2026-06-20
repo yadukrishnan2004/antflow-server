@@ -16,6 +16,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) Migrate() error {
 			workflow_definition_id UUID    NOT NULL,
 			step_index             INTEGER NOT NULL,
 			step_name              TEXT    NOT NULL,
+			compensation_step_name TEXT,
 			task_queue             TEXT,
 			timeout_seconds        INTEGER NOT NULL DEFAULT 300,
 
@@ -27,24 +28,25 @@ func (s *PostgresWorkflowDefinitionStepRepository) Migrate() error {
 			CONSTRAINT uq_workflow_definition_step_order
 				UNIQUE (workflow_definition_id, step_index)
 		);
+
+		ALTER TABLE workflow_definition_step ADD COLUMN IF NOT EXISTS compensation_step_name TEXT;
 	`)
 	return err
 }
 
-// Create inserts a single step definition row.
-// (Previously misnamed BatchCreate — it only ever inserted one row.)
 func (s *PostgresWorkflowDefinitionStepRepository) Create(
 	ctx context.Context, step *workflow.WorkflowDefinitionStep,
 ) error {
 	return s.db.QueryRowContext(ctx, `
 		INSERT INTO workflow_definition_step
-			(workflow_definition_id, step_index, step_name, task_queue, timeout_seconds)
-		VALUES ($1, $2, $3, $4, $5)
+			(workflow_definition_id, step_index, step_name, compensation_step_name, task_queue, timeout_seconds)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id
 	`,
 		step.WorkflowDefinitionID,
 		step.StepIndex,
 		step.StepName,
+		step.CompensationStepName,
 		step.TaskQueue,
 		step.TimeoutSeconds,
 	).Scan(&step.ID)
@@ -55,7 +57,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
 ) ([]workflow.WorkflowDefinitionStep, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, workflow_definition_id, step_index, step_name,
-		       COALESCE(task_queue, ''), timeout_seconds
+		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds
 		FROM   workflow_definition_step
 		WHERE  workflow_definition_id = $1
 		ORDER  BY step_index ASC
@@ -70,7 +72,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
 		var s workflow.WorkflowDefinitionStep
 		if err := rows.Scan(
 			&s.ID, &s.WorkflowDefinitionID, &s.StepIndex,
-			&s.StepName, &s.TaskQueue, &s.TimeoutSeconds,
+			&s.StepName, &s.CompensationStepName, &s.TaskQueue, &s.TimeoutSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -85,12 +87,12 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetByDefinitionAndIndex(
 	step := &workflow.WorkflowDefinitionStep{}
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, workflow_definition_id, step_index, step_name,
-		       COALESCE(task_queue, ''), timeout_seconds
+		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds
 		FROM   workflow_definition_step
 		WHERE  workflow_definition_id = $1 AND step_index = $2
 	`, definitionID, stepIndex).Scan(
 		&step.ID, &step.WorkflowDefinitionID, &step.StepIndex,
-		&step.StepName, &step.TaskQueue, &step.TimeoutSeconds,
+		&step.StepName, &step.CompensationStepName, &step.TaskQueue, &step.TimeoutSeconds,
 	)
 	if err == sql.ErrNoRows {
 		return nil, workflow.ErrNotFound
@@ -99,6 +101,38 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetByDefinitionAndIndex(
 		return nil, err
 	}
 	return step, nil
+}
+
+func (s *PostgresWorkflowDefinitionStepRepository) GetCompensationSteps(
+	ctx context.Context, definitionID string, upToStepIndex int,
+) ([]workflow.WorkflowDefinitionStep, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, workflow_definition_id, step_index, step_name,
+		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds
+		FROM   workflow_definition_step
+		WHERE  workflow_definition_id = $1 
+		  AND  step_index <= $2
+		  AND  compensation_step_name IS NOT NULL 
+		  AND  compensation_step_name <> ''
+		ORDER  BY step_index DESC
+	`, definitionID, upToStepIndex)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var steps []workflow.WorkflowDefinitionStep
+	for rows.Next() {
+		var s workflow.WorkflowDefinitionStep
+		if err := rows.Scan(
+			&s.ID, &s.WorkflowDefinitionID, &s.StepIndex,
+			&s.StepName, &s.CompensationStepName, &s.TaskQueue, &s.TimeoutSeconds,
+		); err != nil {
+			return nil, err
+		}
+		steps = append(steps, s)
+	}
+	return steps, rows.Err()
 }
 
 var _ workflow.WorkflowDefinitionStepRepository = (*PostgresWorkflowDefinitionStepRepository)(nil)

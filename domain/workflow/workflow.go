@@ -11,6 +11,7 @@ type WorkflowType string
 const (
 	ChainWorkflow       WorkflowType = "CHAIN"
 	IndependentWorkflow WorkflowType = "INDEPENDENT"
+	SagaWorkflow        WorkflowType = "SAGA"
 )
 
 
@@ -31,6 +32,7 @@ type WorkflowDefinitionStep struct {
 	WorkflowDefinitionID string
 	StepIndex            int
 	StepName             string
+	CompensationStepName string // empty = no compensation for this step
 	TimeoutSeconds       int
 	TaskQueue            string // optional per-step override; empty = use execution queue
 }
@@ -53,6 +55,8 @@ type WorkflowExecution struct {
 	ScheduledAt          time.Time
 	UpdatedAt            time.Time
 	CompletedAt          *time.Time
+	CompensationTotal    int          // total compensation tasks to run
+	CompensationDone     int          // compensation tasks completed
 }
 
 type Task struct {
@@ -104,4 +108,23 @@ type Checkpoint struct {
 	StepIndex           int
 	StateSnapshot       []byte
 	CreatedAt           time.Time
+}
+
+type CompensationTask struct {
+	ID                   string
+	WorkflowExecutionID  string
+	StepIndex            int
+	StepName             string
+	CompensationStepName string
+	TaskQueue            string
+	Input                []byte
+	Output               []byte
+	State                State
+	Error                string
+	Attempt              int
+	MaxAttempts          int
+	ScheduledAt          time.Time
+	StartedAt            time.Time
+	CompletedAt          time.Time
+	LockedUntil          time.Time
 }
