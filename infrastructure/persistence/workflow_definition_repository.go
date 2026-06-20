@@ -67,22 +67,27 @@ func (s *PostgresWorkflowDefinitionRepository) Create(
 	).Scan(&w.CreatedAt)
 }
 
-// Deactivate marks the active definition for (namespaceID, name) as inactive
-// and returns the old version number so the caller can bump it.
-// Returns ErrNotFound if no active definition exists.
+// Deactivate marks the definition with the given id as inactive.
+// Returns ErrNotFound if no row with that id exists.
 func (s *PostgresWorkflowDefinitionRepository) Deactivate(
-	ctx context.Context, namespaceID, name string,
-) (oldVersion int, err error) {
-	err = s.db.QueryRowContext(ctx, `
+	ctx context.Context, id string,
+) error {
+	res, err := s.db.ExecContext(ctx, `
 		UPDATE workflow_definition
 		SET    is_active = FALSE
-		WHERE  namespace_id = $1 AND name = $2 AND is_active = TRUE
-		RETURNING version
-	`, namespaceID, name).Scan(&oldVersion)
-	if err == sql.ErrNoRows {
-		return 0, workflow.ErrNotFound
+		WHERE  id = $1
+	`, id)
+	if err != nil {
+		return err
 	}
-	return oldVersion, err
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return workflow.ErrNotFound
+	}
+	return nil
 }
 
 func (s *PostgresWorkflowDefinitionRepository) GetByID(
