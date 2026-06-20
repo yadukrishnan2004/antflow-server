@@ -30,13 +30,29 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		return fmt.Errorf("failed to find execution: %w", err)
 	}
 
+	// Guard against acting on a task whose execution has already reached a
+	// terminal state — most commonly because CancelWorkflow ran while this
+	// task was in flight on a worker. taskRepo.CancelByExecution stops *new*
+	// pickups, but a worker that already had the task locked before
+	// cancellation will still call CompleteTask once it finishes; without
+	// this check that call would try to advance a CHAIN cursor or tally an
+	// INDEPENDENT step count against an execution that's already CANCELLED,
+	// FAILED, or COMPLETED. The UpdateCompleted call above is left as-is
+	// (the task row itself recording what actually happened is still
+	// correct/useful for audit), but every state-mutating effect below is
+	// skipped.
+	if workflow.IsTerminal(exec.State) {
+		log.Printf("info: ignoring CompleteTask for task %s: execution %s already terminal (%s)", t.ID, exec.ID, exec.State)
+		return nil
+	}
+
 	if errString != "" {
 		if t.Attempt < t.MaxAttempts {
 			if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				StepIndex:           &t.StepIndex,
 				StepName:            &t.StepName,
-				EventType:           "STEP_RETRYING",
+				EventType:           workflow.EventStepRetrying,
 				Error:               errString,
 				CreatedAt:           time.Now(),
 			}); err != nil {
@@ -64,6 +80,9 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			return nil
 		}
 
+		if err := workflow.ValidateTransition(exec.State, workflow.StateFailed); err != nil {
+			return fmt.Errorf("cannot mark execution failed: %w", err)
+		}
 		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed); err != nil {
 			return fmt.Errorf("failed to mark execution failed: %w", err)
 		}
@@ -71,7 +90,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
-			EventType:           "STEP_FAILED",
+			EventType:           workflow.EventStepFailed,
 			Error:               errString,
 			CreatedAt:           time.Now(),
 		}); err != nil {
@@ -80,7 +99,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 
 		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
-			EventType:           "WORKFLOW_FAILED",
+			EventType:           workflow.EventWorkflowFailed,
 			Error:               errString,
 			CreatedAt:           time.Now(),
 		}); err != nil {
@@ -98,7 +117,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
-			EventType:           "STEP_COMPLETED",
+			EventType:           workflow.EventStepCompleted,
 			Payload:             result,
 			CreatedAt:           time.Now(),
 		}); err != nil {
@@ -133,6 +152,9 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 				return fmt.Errorf("failed to marshal combined outputs: %w", err)
 			}
 
+			if err := workflow.ValidateTransition(exec.State, workflow.StateCompleted); err != nil {
+				return fmt.Errorf("cannot mark execution complete: %w", err)
+			}
 			if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateCompleted); err != nil {
 				return fmt.Errorf("failed to mark execution complete: %w", err)
 			}
@@ -141,7 +163,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			}
 			if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
-				EventType:           "WORKFLOW_COMPLETED",
+				EventType:           workflow.EventWorkflowCompleted,
 				Payload:             combinedBytes,
 				CreatedAt:           time.Now(),
 			}); err != nil {
@@ -169,7 +191,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           &t.StepIndex,
 		StepName:            &t.StepName,
-		EventType:           "STEP_COMPLETED",
+		EventType:           workflow.EventStepCompleted,
 		Payload:             result,
 		CreatedAt:           time.Now(),
 	}); err != nil {
@@ -180,6 +202,9 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 
 	if nextIndex > exec.TotalSteps {
 		// All steps done
+		if err := workflow.ValidateTransition(exec.State, workflow.StateCompleted); err != nil {
+			return fmt.Errorf("cannot mark execution complete: %w", err)
+		}
 		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateCompleted); err != nil {
 			return fmt.Errorf("failed to mark execution complete: %w", err)
 		}
@@ -188,7 +213,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		}
 		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
-			EventType:           "WORKFLOW_COMPLETED",
+			EventType:           workflow.EventWorkflowCompleted,
 			Payload:             result,
 			CreatedAt:           time.Now(),
 		}); err != nil {
@@ -235,7 +260,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           &nextIndex,
 		StepName:            &nextStep.StepName,
-		EventType:           "STEP_SCHEDULED",
+		EventType:           workflow.EventStepScheduled,
 		CreatedAt:           time.Now(),
 	}); err != nil {
 		log.Printf("warn: failed to save history event: %v", err)

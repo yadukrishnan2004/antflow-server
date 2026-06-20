@@ -20,6 +20,10 @@ import (
 //     rows are deleted immediately, so counting them here would race. The
 //     usecase now uses IncrementCompletedSteps on the execution row and reads
 //     outputs from history_event instead.
+//   - chk_task_state now allows 'CANCELLED'. CancelWorkflow marks pending and
+//     in-flight task rows CANCELLED rather than deleting them, so a worker
+//     that completes a task after its workflow was cancelled can be detected
+//     and turned into a no-op instead of corrupting already-terminal state.
 func (s *PostgresTaskRepository) Migrate() error {
 	_, err := s.db.Exec(`
 		CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -55,7 +59,7 @@ func (s *PostgresTaskRepository) Migrate() error {
 				UNIQUE (workflow_execution_id, step_index),
 
 			CONSTRAINT chk_task_state
-				CHECK (state IN ('CREATED','SCHEDULED','RUNNING','COMPLETED','FAILED')),
+				CHECK (state IN ('CREATED','SCHEDULED','RUNNING','COMPLETED','FAILED','CANCELLED')),
 
 			CONSTRAINT chk_task_attempt
 				CHECK (attempt >= 0),
@@ -63,6 +67,13 @@ func (s *PostgresTaskRepository) Migrate() error {
 			CONSTRAINT chk_task_max_attempts
 				CHECK (max_attempts > 0)
 		);
+
+		-- Widen the constraint for tables created before CANCELLED was added.
+		-- IF EXISTS guards re-runs against fresh databases where the table was
+		-- just created above with the constraint already in its final form.
+		ALTER TABLE task DROP CONSTRAINT IF EXISTS chk_task_state;
+		ALTER TABLE task ADD CONSTRAINT chk_task_state
+			CHECK (state IN ('CREATED','SCHEDULED','RUNNING','COMPLETED','FAILED','CANCELLED'));
 
 		CREATE INDEX IF NOT EXISTS idx_task_state_queue_scheduled
 			ON task (state, task_queue, scheduled_at);
@@ -135,6 +146,9 @@ func (s *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*workf
 // Eligibility:
 //   - state = 'CREATED' and scheduled_at <= NOW()  (fresh task)
 //   - state = 'RUNNING' and locked_until < NOW()   (heartbeat timed-out task)
+//
+// CANCELLED rows are never matched by either branch, so a cancelled
+// workflow's remaining tasks simply stop being offered to workers.
 //
 // On success the row is updated to state='RUNNING', started_at=NOW(),
 // locked_until=NOW()+5min, and attempt is incremented. The returned Task
@@ -229,6 +243,20 @@ func (s *PostgresTaskRepository) UpdateState(ctx context.Context, id string, sta
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE task SET state=$1, locked_until=NULL WHERE id=$2`,
 		string(state), id)
+	return err
+}
+
+// CancelByExecution marks every non-terminal task row (CREATED, SCHEDULED, or
+// RUNNING) for the given execution as CANCELLED in a single statement. Rows
+// already COMPLETED or FAILED are left untouched — they're terminal and
+// represent real work that happened, not pending work to cancel.
+func (s *PostgresTaskRepository) CancelByExecution(ctx context.Context, executionID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE task
+		SET    state = 'CANCELLED', locked_until = NULL
+		WHERE  workflow_execution_id = $1
+		  AND  state IN ('CREATED','SCHEDULED','RUNNING')
+	`, executionID)
 	return err
 }
 
