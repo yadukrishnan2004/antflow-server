@@ -30,7 +30,6 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 
 	nextVersion := 1
 
-	// Check if the workflow definition already exists and is active.
 	existingDef, err := w.workflowDefRepo.GetByName(ctx, ns.ID, name)
 	if err == nil && existingDef != nil {
 		existingSteps, err := w.workflowStepRepo.GetStepsByDefinitionID(ctx, existingDef.ID)
@@ -39,18 +38,9 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 		}
 
 		if stepListsEqual(existingSteps, stepNames) {
-			// Re-registration with an identical step list is idempotent —
-			// return the existing active definition unchanged. No version
-			// bump, no deactivation, no churn.
 			return existingDef, nil
 		}
 
-		// Step list differs from the active definition: this is a real
-		// re-registration. Deactivate the current active row so the new one
-		// can become active under the partial unique index
-		// (namespace_id, name) WHERE is_active = TRUE, and bump the version
-		// so definition history stays intact for past executions that still
-		// reference the old definition ID.
 		if err := w.workflowDefRepo.Deactivate(ctx, existingDef.ID); err != nil {
 			return nil, fmt.Errorf("failed to deactivate previous definition: %w", err)
 		}
@@ -88,10 +78,7 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 	return wf, nil
 }
 
-// stepListsEqual reports whether the persisted step definitions (ordered by
-// step_index) match the requested step name list exactly — same names, same
-// order, same count. Used to make RegisterWorkflow idempotent for unchanged
-// definitions while still detecting real changes that require a new version.
+
 func stepListsEqual(existing []workflow.WorkflowDefinitionStep, requested []string) bool {
 	if len(existing) != len(requested) {
 		return false

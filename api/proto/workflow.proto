@@ -16,7 +16,6 @@ service WorkflowService {
   rpc StreamWorkflowHistory (StreamWorkflowHistoryRequest) returns (stream HistoryEvent);
 }
 
-
 message RegisterWorkflowRequest {
   string name = 1;
   string workflow_type = 2;

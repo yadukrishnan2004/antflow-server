@@ -14,13 +14,7 @@ type WorkflowService interface {
 	GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.WorkflowExecution, error)
 	CancelWorkflow(ctx context.Context, workflowID string) error
 	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)
-
-	// GetHistoryAfter returns only history events with ID > afterID for the
-	// given execution. Exposes HistoryEventRepository.GetByExecutionAfter so
-	// callers like StreamWorkflowHistory can poll incrementally instead of
-	// re-reading the full history every tick.
 	GetHistoryAfter(ctx context.Context, workflowID string, afterID int64) ([]workflow.HistoryEvent, error)
-
 	GetWorkflowNameForExecution(ctx context.Context, executionID string) (string, error)
 	SubscribeToQueue(taskQueue string) (<-chan struct{}, func())
 }
