@@ -1,25 +1,60 @@
 package workflow
+ 
+import (
+	"encoding/json"
+	"time"
+)
 
-import "time"
 
 type WorkflowType string
-
+ 
 const (
 	ChainWorkflow       WorkflowType = "CHAIN"
 	IndependentWorkflow WorkflowType = "INDEPENDENT"
 )
 
-// WorkflowDefinitionStep represents a step inside a registered workflow type.
+
+type WorkflowDefinition struct {
+	ID           string
+	NamespaceID  string
+	Name         string
+	WorkflowType WorkflowType 
+	Version      int
+	IsActive     bool
+	Steps        int 
+	CreatedAt    time.Time
+}
+
+
 type WorkflowDefinitionStep struct {
 	ID                   string
 	WorkflowDefinitionID string
 	StepIndex            int
 	StepName             string
 	TimeoutSeconds       int
-	TaskQueue            string // optional override; empty = use execution's queue
+	TaskQueue            string // optional per-step override; empty = use execution queue
 }
 
-// Task is a single unit of work within a workflow.
+
+type WorkflowExecution struct {
+	ID                   string
+	WorkflowDefinitionID string
+	WorkflowName         string       // denormalized for fast lookup without joining definition
+	WorkflowType         WorkflowType // denormalized — avoids definition join on every task completion
+	TaskQueue            string       // the queue this execution's tasks are dispatched to
+	TotalSteps           int          // copied from definition at start time; definition may change later
+	CompletedSteps       int          // atomically incremented; replaces CountCompleted queries on task table
+	CurrentStep          int          // cursor for CHAIN workflows; unused for INDEPENDENT
+	Input                []byte
+	Result               []byte
+	State                State
+	Error                string
+	CreatedAt            time.Time
+	ScheduledAt          time.Time
+	UpdatedAt            time.Time
+	CompletedAt          *time.Time
+}
+
 type Task struct {
 	ID                  string
 	WorkflowExecutionID string
@@ -27,68 +62,40 @@ type Task struct {
 	StepName            string
 	TaskQueue           string
 	Input               []byte
-	Output              []byte
+	Output              []byte // transient; only set while CompleteTask processes the result
 	State               State
 	Error               string
 	ScheduledAt         time.Time
 	StartedAt           time.Time
 	CompletedAt         time.Time
 	LockedUntil         time.Time
-	Attempt             int
+	Attempt             int // number of times this task has been attempted; starts at 0
 	MaxAttempts         int
 }
 
-// HistoryEvent represents an event in the workflow execution
+
 type HistoryEvent struct {
 	ID                  int64
 	WorkflowExecutionID string
-	StepIndex           *int
-	StepName            *string
-	EventType           string
+	StepIndex           *int    // nil for workflow-level events
+	StepName            *string // nil for workflow-level events
+	EventType           EventType
 	Payload             []byte
-	Error               string // empty string = no error
+	Error               string // empty = no error
 	CreatedAt           time.Time
 }
 
+
 type TaskOutput struct {
-	StepIndex int    `json:"step_index"`
-	StepName  string `json:"step_name"`
-	Output    []byte `json:"output"`
+	StepIndex int             `json:"step_index"`
+	StepName  string          `json:"step_name"`
+	Output    json.RawMessage `json:"output"`
 }
 
 type Namespace struct {
 	ID        string
 	Name      string
 	CreatedAt time.Time
-}
-
-type WorkflowDefinition struct {
-	ID           string
-	NamespaceID  string
-	Name         string
-	WorkflowType string
-	Version      int
-	IsActive     bool
-	Steps        int
-	CreatedAt    time.Time
-}
-
-type WorkflowExecution struct {
-	ID                   string
-	WorkflowDefinitionID string
-	Input                []byte
-	Result               []byte
-	State                State
-	Error                string
-	CurrentStep          int
-	CreatedAt            time.Time
-	ScheduledAt          time.Time
-	UpdatedAt            time.Time
-	CompletedAt          *time.Time
-	WorkflowName         string // denormalized for quick lookup
-	TaskQueue            string // the queue this execution runs on
-	TotalSteps           int    // total step count from the definition
-	WorkflowType         WorkflowType
 }
 
 type Checkpoint struct {

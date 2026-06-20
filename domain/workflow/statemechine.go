@@ -5,13 +5,11 @@ import "fmt"
 type State string
 
 const (
-	StateCreated       State = "CREATED"
-	StateRunning       State = "RUNNING"
-	StateCompleted     State = "COMPLETED"
-	StateFailed        State = "FAILED"
-	StateCancelled     State = "CANCELLED"
-	ActiveStatusActive State = "ACTIVE"
-	ActiveStatusDELETE State = "DELETED"
+	StateCreated   State = "CREATED"
+	StateRunning   State = "RUNNING"
+	StateCompleted State = "COMPLETED"
+	StateFailed    State = "FAILED"
+	StateCancelled State = "CANCELLED"
 )
 
 var validTransitions = map[State][]State{
@@ -28,7 +26,7 @@ func ValidateTransition(current, next State) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("invalid state transition: %s → %s", current, next)
+	return fmt.Errorf("%w: %s → %s", ErrInvalidStateTransition, current, next)
 }
 
 // IsTerminal returns true if no further transitions are possible from this state.

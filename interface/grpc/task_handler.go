@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/api/grpc/pb"
 	"google.golang.org/grpc/codes"
@@ -50,6 +51,8 @@ func (h *WorkflowHandler) StreamTasks(req *pb.StreamTasksRequest, stream pb.Work
 					return stream.Context().Err()
 				case <-ch:
 					// woken up by new task notification
+				case <-time.After(1 * time.Second):
+					// periodically poll to check for scheduled tasks/retries
 				}
 			}
 		}

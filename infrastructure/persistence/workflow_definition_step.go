@@ -12,12 +12,12 @@ func (s *PostgresWorkflowDefinitionStepRepository) Migrate() error {
 		CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 		CREATE TABLE IF NOT EXISTS workflow_definition_step (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			workflow_definition_id UUID NOT NULL,
-			step_index INTEGER NOT NULL,
-			step_name TEXT NOT NULL,
-			task_queue TEXT,
-			timeout_seconds INTEGER NOT NULL DEFAULT 300,
+			id                     UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+			workflow_definition_id UUID    NOT NULL,
+			step_index             INTEGER NOT NULL,
+			step_name              TEXT    NOT NULL,
+			task_queue             TEXT,
+			timeout_seconds        INTEGER NOT NULL DEFAULT 300,
 
 			CONSTRAINT fk_workflow_definition_step_definition
 				FOREIGN KEY (workflow_definition_id)
@@ -31,23 +31,17 @@ func (s *PostgresWorkflowDefinitionStepRepository) Migrate() error {
 	return err
 }
 
-func (s *PostgresWorkflowDefinitionStepRepository) BatchCreate(
-	ctx context.Context,
-	step *workflow.WorkflowDefinitionStep,
+// Create inserts a single step definition row.
+// (Previously misnamed BatchCreate — it only ever inserted one row.)
+func (s *PostgresWorkflowDefinitionStepRepository) Create(
+	ctx context.Context, step *workflow.WorkflowDefinitionStep,
 ) error {
-	return s.db.QueryRowContext(
-		ctx,
-		`
-		INSERT INTO workflow_definition_step (
-			workflow_definition_id,
-			step_index,
-			step_name,
-			task_queue,
-			timeout_seconds
-		)
+	return s.db.QueryRowContext(ctx, `
+		INSERT INTO workflow_definition_step
+			(workflow_definition_id, step_index, step_name, task_queue, timeout_seconds)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
-		`,
+	`,
 		step.WorkflowDefinitionID,
 		step.StepIndex,
 		step.StepName,
@@ -57,17 +51,15 @@ func (s *PostgresWorkflowDefinitionStepRepository) BatchCreate(
 }
 
 func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
-	ctx context.Context,
-	definitionID string,
+	ctx context.Context, definitionID string,
 ) ([]workflow.WorkflowDefinitionStep, error) {
-	rows, err := s.db.QueryContext(
-		ctx,
-		`SELECT id, workflow_definition_id, step_index, step_name, COALESCE(task_queue, ''), timeout_seconds
-         FROM workflow_definition_step
-         WHERE workflow_definition_id = $1
-         ORDER BY step_index ASC`,
-		definitionID,
-	)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, workflow_definition_id, step_index, step_name,
+		       COALESCE(task_queue, ''), timeout_seconds
+		FROM   workflow_definition_step
+		WHERE  workflow_definition_id = $1
+		ORDER  BY step_index ASC
+	`, definitionID)
 	if err != nil {
 		return nil, err
 	}
@@ -75,47 +67,30 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
 
 	var steps []workflow.WorkflowDefinitionStep
 	for rows.Next() {
-		var step workflow.WorkflowDefinitionStep
+		var s workflow.WorkflowDefinitionStep
 		if err := rows.Scan(
-			&step.ID,
-			&step.WorkflowDefinitionID,
-			&step.StepIndex,
-			&step.StepName,
-			&step.TaskQueue,
-			&step.TimeoutSeconds,
+			&s.ID, &s.WorkflowDefinitionID, &s.StepIndex,
+			&s.StepName, &s.TaskQueue, &s.TimeoutSeconds,
 		); err != nil {
 			return nil, err
 		}
-		steps = append(steps, step)
+		steps = append(steps, s)
 	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return steps, nil
+	return steps, rows.Err()
 }
 
 func (s *PostgresWorkflowDefinitionStepRepository) GetByDefinitionAndIndex(
-	ctx context.Context,
-	definitionID string,
-	stepIndex int,
+	ctx context.Context, definitionID string, stepIndex int,
 ) (*workflow.WorkflowDefinitionStep, error) {
 	step := &workflow.WorkflowDefinitionStep{}
-	err := s.db.QueryRowContext(
-		ctx,
-		`SELECT id, workflow_definition_id, step_index, step_name, COALESCE(task_queue, ''), timeout_seconds
-         FROM workflow_definition_step
-         WHERE workflow_definition_id = $1 AND step_index = $2`,
-		definitionID,
-		stepIndex,
-	).Scan(
-		&step.ID,
-		&step.WorkflowDefinitionID,
-		&step.StepIndex,
-		&step.StepName,
-		&step.TaskQueue,
-		&step.TimeoutSeconds,
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, workflow_definition_id, step_index, step_name,
+		       COALESCE(task_queue, ''), timeout_seconds
+		FROM   workflow_definition_step
+		WHERE  workflow_definition_id = $1 AND step_index = $2
+	`, definitionID, stepIndex).Scan(
+		&step.ID, &step.WorkflowDefinitionID, &step.StepIndex,
+		&step.StepName, &step.TaskQueue, &step.TimeoutSeconds,
 	)
 	if err == sql.ErrNoRows {
 		return nil, workflow.ErrNotFound
@@ -125,3 +100,5 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetByDefinitionAndIndex(
 	}
 	return step, nil
 }
+
+var _ workflow.WorkflowDefinitionStepRepository = (*PostgresWorkflowDefinitionStepRepository)(nil)

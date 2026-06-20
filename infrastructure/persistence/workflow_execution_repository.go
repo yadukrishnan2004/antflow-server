@@ -7,29 +7,36 @@ import (
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
 
+// Migrate creates the workflow_execution table.
+//
+// New vs old schema:
+//   - completed_steps INTEGER NOT NULL DEFAULT 0 — used by INDEPENDENT workflows
+//     to atomically track how many steps have finished without querying the task
+//     table (which deletes rows on completion).
 func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 	_, err := s.db.Exec(`
 		CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 		CREATE TABLE IF NOT EXISTS workflow_execution (
-			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-			workflow_definition_id UUID NOT NULL,
-			workflow_name TEXT NOT NULL,
-			task_queue TEXT NOT NULL DEFAULT 'default',
-			total_steps INTEGER NOT NULL,
-			workflow_type TEXT NOT NULL,
+			id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+			workflow_definition_id UUID        NOT NULL,
+			workflow_name          TEXT        NOT NULL,
+			task_queue             TEXT        NOT NULL DEFAULT 'default',
+			total_steps            INTEGER     NOT NULL,
+			completed_steps        INTEGER     NOT NULL DEFAULT 0,
+			workflow_type          TEXT        NOT NULL,
 
-			input BYTEA,
-			result BYTEA,
+			input       BYTEA,
+			result      BYTEA,
 
-			state TEXT NOT NULL DEFAULT 'CREATED',
-			error TEXT,
+			state       TEXT        NOT NULL DEFAULT 'CREATED',
+			error       TEXT,
 
-			current_step INTEGER NOT NULL DEFAULT 0,
+			current_step INTEGER    NOT NULL DEFAULT 0,
 
-			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			scheduled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			completed_at TIMESTAMPTZ,
 
 			CONSTRAINT fk_workflow_execution_definition
@@ -38,54 +45,36 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 				ON DELETE CASCADE,
 
 			CONSTRAINT chk_workflow_execution_state
-				CHECK (
-					state IN (
-						'CREATED',
-						'RUNNING',
-						'COMPLETED',
-						'FAILED',
-						'CANCELLED'
-					)
-				),
+				CHECK (state IN ('CREATED','RUNNING','COMPLETED','FAILED','CANCELLED')),
 
 			CONSTRAINT chk_workflow_execution_current_step
-				CHECK (current_step >= 0)
+				CHECK (current_step >= 0),
+
+			CONSTRAINT chk_workflow_execution_completed_steps
+				CHECK (completed_steps >= 0)
 		);
 	`)
 	return err
 }
 
 func (s *PostgresWorkflowExecutionRepository) Create(
-	ctx context.Context,
-	exec *workflow.WorkflowExecution,
+	ctx context.Context, exec *workflow.WorkflowExecution,
 ) error {
-	return s.db.QueryRowContext(
-		ctx,
-		`
-		INSERT INTO workflow_execution (
-			id,
-			workflow_definition_id,
-			workflow_name,
-			task_queue,
-			total_steps,
-			workflow_type,
-			input,
-			state,
-			current_step,
-			scheduled_at,
-			created_at,
-			updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		RETURNING
-			created_at,
-			updated_at
-		`,
+	return s.db.QueryRowContext(ctx, `
+		INSERT INTO workflow_execution
+			(id, workflow_definition_id, workflow_name, task_queue,
+			 total_steps, completed_steps, workflow_type,
+			 input, state, current_step,
+			 scheduled_at, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		RETURNING created_at, updated_at
+	`,
 		exec.ID,
 		exec.WorkflowDefinitionID,
 		exec.WorkflowName,
 		exec.TaskQueue,
 		exec.TotalSteps,
+		exec.CompletedSteps,
 		string(exec.WorkflowType),
 		exec.Input,
 		string(exec.State),
@@ -93,32 +82,24 @@ func (s *PostgresWorkflowExecutionRepository) Create(
 		exec.ScheduledAt,
 		exec.CreatedAt,
 		exec.UpdatedAt,
-	).Scan(
-		&exec.CreatedAt,
-		&exec.UpdatedAt,
-	)
+	).Scan(&exec.CreatedAt, &exec.UpdatedAt)
 }
 
 func (s *PostgresWorkflowExecutionRepository) GetByID(
-	ctx context.Context,
-	id string,
+	ctx context.Context, id string,
 ) (*workflow.WorkflowExecution, error) {
 	exec := &workflow.WorkflowExecution{}
 	var completedAt sql.NullTime
-	var stateStr string
-	var wfTypeStr string
+	var stateStr, wfTypeStr string
 
-	err := s.db.QueryRowContext(
-		ctx,
-		`SELECT id, workflow_definition_id, input, result,
-		        state, COALESCE(error, ''), current_step, created_at,
-		        scheduled_at, updated_at, completed_at,
-		        workflow_name, workflow_type, total_steps,
-		        task_queue
-		 FROM workflow_execution
-		 WHERE id = $1`,
-		id,
-	).Scan(
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, workflow_definition_id, input, result,
+		       state, COALESCE(error,''), current_step, completed_steps,
+		       created_at, scheduled_at, updated_at, completed_at,
+		       workflow_name, workflow_type, total_steps, task_queue
+		FROM   workflow_execution
+		WHERE  id = $1
+	`, id).Scan(
 		&exec.ID,
 		&exec.WorkflowDefinitionID,
 		&exec.Input,
@@ -126,6 +107,7 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 		&stateStr,
 		&exec.Error,
 		&exec.CurrentStep,
+		&exec.CompletedSteps,
 		&exec.CreatedAt,
 		&exec.ScheduledAt,
 		&exec.UpdatedAt,
@@ -142,37 +124,37 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 		return nil, err
 	}
 
-	exec.WorkflowType = workflow.WorkflowType(wfTypeStr)
 	exec.State = workflow.State(stateStr)
+	exec.WorkflowType = workflow.WorkflowType(wfTypeStr)
 	if completedAt.Valid {
 		exec.CompletedAt = &completedAt.Time
 	}
-
 	return exec, nil
 }
 
 func (s *PostgresWorkflowExecutionRepository) UpdateState(
-	ctx context.Context,
-	id string,
-	state workflow.State,
+	ctx context.Context, id string, state workflow.State,
 ) error {
 	var err error
-	if state == workflow.StateFailed || state == workflow.StateCancelled {
+	switch state {
+	case workflow.StateCompleted, workflow.StateFailed, workflow.StateCancelled:
 		_, err = s.db.ExecContext(ctx,
-			`UPDATE workflow_execution SET state=$1, completed_at=NOW(), updated_at=NOW() WHERE id=$2`,
+			`UPDATE workflow_execution
+			 SET state=$1, completed_at=NOW(), updated_at=NOW()
+			 WHERE id=$2`,
 			string(state), id)
-	} else {
+	default:
 		_, err = s.db.ExecContext(ctx,
-			`UPDATE workflow_execution SET state=$1, updated_at=NOW() WHERE id=$2`,
+			`UPDATE workflow_execution
+			 SET state=$1, updated_at=NOW()
+			 WHERE id=$2`,
 			string(state), id)
 	}
 	return err
 }
 
 func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
-	ctx context.Context,
-	id string,
-	nextStep int,
+	ctx context.Context, id string, nextStep int,
 ) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE workflow_execution SET current_step=$1, updated_at=NOW() WHERE id=$2`,
@@ -181,12 +163,28 @@ func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
 }
 
 func (s *PostgresWorkflowExecutionRepository) SaveResult(
-	ctx context.Context,
-	id string,
-	result []byte,
+	ctx context.Context, id string, result []byte,
 ) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE workflow_execution SET result=$1, completed_at=NOW(), updated_at=NOW() WHERE id=$2`,
+		`UPDATE workflow_execution SET result=$1, updated_at=NOW() WHERE id=$2`,
 		result, id)
 	return err
 }
+
+// IncrementCompletedSteps atomically increments completed_steps and returns
+// the new value. This replaces the old CountCompleted approach which raced
+// with concurrent task-row deletions.
+func (s *PostgresWorkflowExecutionRepository) IncrementCompletedSteps(
+	ctx context.Context, id string,
+) (newCount int, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`UPDATE workflow_execution
+		 SET    completed_steps = completed_steps + 1, updated_at = NOW()
+		 WHERE  id = $1
+		 RETURNING completed_steps`,
+		id,
+	).Scan(&newCount)
+	return newCount, err
+}
+
+var _ workflow.WorkflowExecutionRepository = (*PostgresWorkflowExecutionRepository)(nil)
