@@ -258,7 +258,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		TaskQueue:           resolvedQueue,
 		Input:               result, // ← chain
 		State:               workflow.StateCreated,
-		Attempt:             1,
+		Attempt:             0,
 		MaxAttempts:         3,
 		ScheduledAt:         time.Now(),
 	}
