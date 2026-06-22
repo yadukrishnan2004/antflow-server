@@ -46,6 +46,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		return nil
 	}
 
+	// ── Task FAILED ───────────────────────────────────────────────────────
 	if errString != "" {
 		if t.Attempt < t.MaxAttempts {
 			if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
@@ -58,7 +59,8 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			}); err != nil {
 				log.Printf("warn: failed to save history event: %v", err)
 			}
-			// Delete the original task row to avoid unique constraint conflict!
+			// Delete the original task row to avoid unique constraint conflict
+			// on (workflow_execution_id, step_index) when we re-create it.
 			_ = i.taskRepo.Delete(ctx, t.ID)
 
 			retryTask := &workflow.Task{
@@ -71,7 +73,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 				State:               workflow.StateCreated,
 				Attempt:             t.Attempt,
 				MaxAttempts:         t.MaxAttempts,
-				ScheduledAt:         time.Now().Add(time.Duration(t.Attempt*t.Attempt) * 5 * time.Second), // exponential backoff
+				ScheduledAt:         time.Now().Add(time.Duration(t.Attempt*t.Attempt) * 5 * time.Second),
 			}
 			if err := i.taskRepo.Create(ctx, retryTask); err != nil {
 				return fmt.Errorf("failed to create retry task: %w", err)
@@ -79,6 +81,10 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			i.broker.Notify(t.TaskQueue)
 			return nil
 		}
+
+		// Permanent failure (exhausted all attempts).
+		log.Printf("info: task %s permanently failed at stepIndex=%d stepName=%s workflowType=%s",
+			t.ID, t.StepIndex, t.StepName, exec.WorkflowType)
 
 		if exec.WorkflowType == workflow.SagaWorkflow {
 			_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
@@ -90,7 +96,12 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 				CreatedAt:           time.Now(),
 			})
 
-			if err := i.startCompensation(ctx, exec, t.StepIndex-1); err != nil {
+			// Pass t.StepIndex (the failed step's index) so startCompensation
+			// can compensate all steps with index < t.StepIndex that succeeded.
+			// Previously this passed t.StepIndex-1, which caused step 1 failures
+			// to call GetCompensationSteps with upTo=0, returning nothing and
+			// leaving the compensation_task table permanently empty.
+			if err := i.startCompensation(ctx, exec, t.StepIndex); err != nil {
 				log.Printf("error: failed to start saga compensation: %v", err)
 				_ = i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed)
 				_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
@@ -104,6 +115,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			return nil
 		}
 
+		// Non-saga workflow: mark execution FAILED immediately.
 		if err := workflow.ValidateTransition(exec.State, workflow.StateFailed); err != nil {
 			return fmt.Errorf("cannot mark execution failed: %w", err)
 		}
@@ -120,7 +132,6 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		}); err != nil {
 			log.Printf("warn: failed to save history event: %v", err)
 		}
-
 		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			EventType:           workflow.EventWorkflowFailed,
@@ -129,14 +140,14 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		}); err != nil {
 			log.Printf("warn: failed to save history event: %v", err)
 		}
-
-		// Delete the task row after permanent failure
 		_ = i.taskRepo.Delete(ctx, t.ID)
 		return nil
 	}
 
+	// ── Task SUCCEEDED ────────────────────────────────────────────────────
+
 	if exec.WorkflowType == workflow.IndependentWorkflow {
-		// 1. Write StepCompleted history (best-effort)
+		// Write StepCompleted history (best-effort)
 		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
@@ -148,14 +159,12 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			log.Printf("warn: failed to save history event: %v", err)
 		}
 
-		
 		newCount, err := i.executionRepo.IncrementCompletedSteps(ctx, exec.ID)
 		if err != nil {
 			return fmt.Errorf("failed to increment completed steps: %w", err)
 		}
 
 		if newCount == exec.TotalSteps {
-			
 			outputs, err := i.historyRepo.GetStepOutputs(ctx, exec.ID)
 			if err != nil {
 				return fmt.Errorf("failed to get step outputs: %w", err)
@@ -185,12 +194,11 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			}
 		}
 
-		// Completed task - delete the task row
 		_ = i.taskRepo.Delete(ctx, t.ID)
 		return nil
 	}
 
-	// CHAIN workflow behavior
+	// ── CHAIN (and SAGA success path) ─────────────────────────────────────
 	if err := i.checkpointRepo.Save(ctx, &workflow.Checkpoint{
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           t.StepIndex,
@@ -200,7 +208,8 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		return fmt.Errorf("failed to save checkpoint at step %d: %w", t.StepIndex, err)
 	}
 
-	// Write StepCompleted history (best-effort)
+	// Write StepCompleted history — needed by saga compensation to know
+	// which steps produced output and are eligible for rollback.
 	if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           &t.StepIndex,
@@ -215,7 +224,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 	nextIndex := t.StepIndex + 1
 
 	if nextIndex > exec.TotalSteps {
-		// All steps done
+		// All steps done — workflow is complete.
 		if err := workflow.ValidateTransition(exec.State, workflow.StateCompleted); err != nil {
 			return fmt.Errorf("cannot mark execution complete: %w", err)
 		}
@@ -233,13 +242,10 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		}); err != nil {
 			log.Printf("warn: failed to save history event: %v", err)
 		}
-
-		// Completed task - delete the task row
 		_ = i.taskRepo.Delete(ctx, t.ID)
 		return nil
 	}
 
-	// Fetch step definition using the new repo method
 	nextStep, err := i.workflowStepRepo.GetByDefinitionAndIndex(ctx, exec.WorkflowDefinitionID, nextIndex)
 	if err != nil {
 		return fmt.Errorf("failed to find next step definition: %w", err)
@@ -256,7 +262,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		StepIndex:           nextIndex,
 		StepName:            nextStep.StepName,
 		TaskQueue:           resolvedQueue,
-		Input:               result, // ← chain
+		Input:               result, // chain: previous step's output becomes next step's input
 		State:               workflow.StateCreated,
 		Attempt:             0,
 		MaxAttempts:         3,
@@ -280,7 +286,6 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		log.Printf("warn: failed to save history event: %v", err)
 	}
 
-	// Completed task - delete the task row
 	_ = i.taskRepo.Delete(ctx, t.ID)
 	return nil
 }

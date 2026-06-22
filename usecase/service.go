@@ -31,6 +31,7 @@ type workflowInteractor struct {
 	historyRepo          workflow.HistoryEventRepository
 	checkpointRepo       workflow.CheckpointRepository
 	broker               *TaskBroker
+	compBroker 			 *TaskBroker
 }
 
 func New(
