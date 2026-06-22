@@ -112,7 +112,10 @@ func (s *SignalStore) Wait(ctx context.Context, executionID, name string, timeou
 	}
 
 	select {
-	case payload := <-w.ch:
+	case payload, ok := <-w.ch:
+		if !ok {
+			return nil, context.Canceled
+		}
 		return payload, nil
 
 	case <-timeoutCh:

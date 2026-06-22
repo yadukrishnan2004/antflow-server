@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/api/grpc/pb"
 	"github.com/yadukrishnan2004/antflow-server/infrastructure/persistence"
@@ -47,6 +48,17 @@ func main() {
 		storage.HistoryEvent,
 		storage.Checkpoint,
 	)
+
+	// Run periodic background task recovery safety net.
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := storage.Task.ResetTimedOutTasks(); err != nil {
+				log.Printf("error: failed to reset timed out tasks: %v", err)
+			}
+		}
+	}()
 
 	workflowHandler := appgrpc.NewWorkflowHandler(workflowService)
 

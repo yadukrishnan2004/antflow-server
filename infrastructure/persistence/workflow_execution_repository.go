@@ -156,13 +156,13 @@ func (s *PostgresWorkflowExecutionRepository) UpdateState(
 		_, err = s.db.ExecContext(ctx,
 			`UPDATE workflow_execution
 			 SET state=$1, completed_at=NOW(), updated_at=NOW()
-			 WHERE id=$2`,
+			 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
 			string(state), id)
 	default:
 		_, err = s.db.ExecContext(ctx,
 			`UPDATE workflow_execution
 			 SET state=$1, updated_at=NOW()
-			 WHERE id=$2`,
+			 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
 			string(state), id)
 	}
 	return err
@@ -172,7 +172,9 @@ func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
 	ctx context.Context, id string, nextStep int,
 ) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE workflow_execution SET current_step=$1, updated_at=NOW() WHERE id=$2`,
+		`UPDATE workflow_execution
+		 SET current_step=$1, updated_at=NOW()
+		 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
 		nextStep, id)
 	return err
 }
@@ -181,7 +183,9 @@ func (s *PostgresWorkflowExecutionRepository) SaveResult(
 	ctx context.Context, id string, result []byte,
 ) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE workflow_execution SET result=$1, updated_at=NOW() WHERE id=$2`,
+		`UPDATE workflow_execution
+		 SET result=$1, updated_at=NOW()
+		 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
 		result, id)
 	return err
 }

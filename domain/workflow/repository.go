@@ -118,4 +118,5 @@ type CompensationTaskRepository interface {
 	UpdateCompleted(ctx context.Context, id string, output []byte, errMsg string) error
 	Delete(ctx context.Context, id string) error
 	GetPendingByExecution(ctx context.Context, executionID string) ([]CompensationTask, error)
+	CancelByExecution(ctx context.Context, executionID string) error
 }

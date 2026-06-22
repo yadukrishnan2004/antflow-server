@@ -104,13 +104,17 @@ func (i *workflowInteractor) startCompensation(
 	// order (highest step_index first) by GetCompensationSteps, so index [0]
 	// is the most recently completed step — correct starting point.
 	firstComp := activeCompSteps[0]
+	q := firstComp.TaskQueue
+	if q == "" {
+		q = exec.TaskQueue
+	}
 	ct := &workflow.CompensationTask{
 		ID:                   uuid.New().String(),
 		WorkflowExecutionID:  exec.ID,
 		StepIndex:            firstComp.StepIndex,
 		StepName:             firstComp.StepName,
 		CompensationStepName: firstComp.CompensationStepName,
-		TaskQueue:            exec.TaskQueue,
+		TaskQueue:            q,
 		Input:                outputByStep[firstComp.StepIndex],
 		State:                workflow.StateCreated,
 		MaxAttempts:          3,
@@ -132,7 +136,7 @@ func (i *workflowInteractor) startCompensation(
 		CreatedAt:           time.Now(),
 	})
 
-	i.broker.Notify(exec.TaskQueue)
+	i.broker.Notify(q)
 	return nil
 }
 
@@ -320,13 +324,17 @@ func (i *workflowInteractor) CompleteCompensationTask(
 		return nil
 	}
 
+	q := nextComp.TaskQueue
+	if q == "" {
+		q = freshExec.TaskQueue
+	}
 	ct := &workflow.CompensationTask{
 		ID:                   uuid.New().String(),
 		WorkflowExecutionID:  exec.ID,
 		StepIndex:            nextComp.StepIndex,
 		StepName:             nextComp.StepName,
 		CompensationStepName: nextComp.CompensationStepName,
-		TaskQueue:            freshExec.TaskQueue,
+		TaskQueue:            q,
 		Input:                outputByStep[nextComp.StepIndex],
 		State:                workflow.StateCreated,
 		MaxAttempts:          3,
@@ -348,6 +356,6 @@ func (i *workflowInteractor) CompleteCompensationTask(
 		CreatedAt:           time.Now(),
 	})
 
-	i.broker.Notify(freshExec.TaskQueue)
+	i.broker.Notify(q)
 	return nil
 }

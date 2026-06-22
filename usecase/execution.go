@@ -124,6 +124,10 @@ func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID stri
 		return fmt.Errorf("failed to cancel pending tasks: %w", err)
 	}
 
+	if err := i.compensationTaskRepo.CancelByExecution(ctx, workflowID); err != nil {
+		return fmt.Errorf("failed to cancel pending compensation tasks: %w", err)
+	}
+
 	_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 		WorkflowExecutionID: workflowID,
 		EventType:           workflow.EventWorkflowCancelled,
