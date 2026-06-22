@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
@@ -19,6 +20,15 @@ type WorkflowService interface {
 	GetHistoryAfter(ctx context.Context, workflowID string, afterID int64) ([]workflow.HistoryEvent, error)
 	GetWorkflowNameForExecution(ctx context.Context, executionID string) (string, error)
 	SubscribeToQueue(taskQueue string) (<-chan struct{}, func())
+
+	// Signal / pause-resume support.
+	// SendSignal delivers payload to the step currently waiting for the named
+	// signal on executionID, or buffers it for the next WaitForSignal call.
+	SendSignal(executionID, name string, payload []byte) bool
+
+	// WaitForSignal blocks until the named signal arrives for executionID or
+	// timeout elapses. Zero timeout means wait indefinitely (bounded by ctx).
+	WaitForSignal(ctx context.Context, executionID, name string, timeout time.Duration) ([]byte, error)
 }
 
 type workflowInteractor struct {
@@ -30,8 +40,17 @@ type workflowInteractor struct {
 	compensationTaskRepo workflow.CompensationTaskRepository
 	historyRepo          workflow.HistoryEventRepository
 	checkpointRepo       workflow.CheckpointRepository
-	broker               *TaskBroker
-	compBroker 			 *TaskBroker
+
+	// broker is used for both regular and compensation task notifications.
+	// Previously a separate compBroker field was declared but never initialized,
+	// meaning compensation task notifies silently no-oped. Unifying on one
+	// broker is correct: StreamTasks and StreamCompensationTasks both subscribe
+	// to the same queue name and independently poll their respective repos;
+	// being woken by the same notification is fine and keeps the code simpler.
+	broker *TaskBroker
+
+	// signals handles pause/resume for workflow steps.
+	signals *SignalStore
 }
 
 func New(
@@ -54,9 +73,18 @@ func New(
 		historyRepo:          historyRepo,
 		checkpointRepo:       checkpointRepo,
 		broker:               NewTaskBroker(),
+		signals:              NewSignalStore(),
 	}
 }
 
 func (i *workflowInteractor) SubscribeToQueue(taskQueue string) (<-chan struct{}, func()) {
 	return i.broker.Subscribe(taskQueue)
 }
+
+func (i *workflowInteractor) SendSignal(executionID, name string, payload []byte) bool {
+	return i.signals.Send(executionID, name, payload)
+}
+
+func (i *workflowInteractor) WaitForSignal(ctx context.Context, executionID, name string, timeout time.Duration) ([]byte, error) {
+	return i.signals.Wait(ctx, executionID, name, timeout)
+}	

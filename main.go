@@ -12,40 +12,31 @@ import (
 )
 
 func main() {
-	// Connect to PostgreSQL database
 	dsn := "postgres://postgres:1234@localhost:5432/postgres?sslmode=disable"
 	storage, err := persistence.New(dsn)
 	if err != nil {
 		log.Fatalf("failed to initialize persistence layer: %v", err)
 	}
 
-	// Migrate database schemas sequentially
-	if err := storage.Namespace.Migrate(); err != nil {
-		log.Fatalf("Namespace migration failed: %v", err)
-	}
-	if err := storage.WorkflowDefinition.Migrate(); err != nil {
-		log.Fatalf("WorkflowDefinition migration failed: %v", err)
-	}
-	if err := storage.WorkflowDefinitionStep.Migrate(); err != nil {
-		log.Fatalf("WorkflowDefinitionStep migration failed: %v", err)
-	}
-	if err := storage.WorkflowExecution.Migrate(); err != nil {
-		log.Fatalf("WorkflowExecution migration failed: %v", err)
-	}
-	if err := storage.Task.Migrate(); err != nil {
-		log.Fatalf("Task migration failed: %v", err)
-	}
-	if err := storage.HistoryEvent.Migrate(); err != nil {
-		log.Fatalf("HistoryEvent migration failed: %v", err)
-	}
-	if err := storage.Checkpoint.Migrate(); err != nil {
-		log.Fatalf("Checkpoint migration failed: %v", err)
-	}
-	if err := storage.CompensationTask.Migrate(); err != nil {
-		log.Fatalf("CompensationTask migration failed: %v", err)
+	// Run schema migrations in dependency order.
+	for _, m := range []struct {
+		name string
+		fn   func() error
+	}{
+		{"Namespace", storage.Namespace.Migrate},
+		{"WorkflowDefinition", storage.WorkflowDefinition.Migrate},
+		{"WorkflowDefinitionStep", storage.WorkflowDefinitionStep.Migrate},
+		{"WorkflowExecution", storage.WorkflowExecution.Migrate},
+		{"Task", storage.Task.Migrate},
+		{"HistoryEvent", storage.HistoryEvent.Migrate},
+		{"Checkpoint", storage.Checkpoint.Migrate},
+		{"CompensationTask", storage.CompensationTask.Migrate},
+	} {
+		if err := m.fn(); err != nil {
+			log.Fatalf("%s migration failed: %v", m.name, err)
+		}
 	}
 
-	// Initialize the Usecase Service
 	workflowService := usecase.New(
 		storage.Namespace,
 		storage.WorkflowDefinition,
@@ -57,16 +48,16 @@ func main() {
 		storage.Checkpoint,
 	)
 
-	// Initialize the gRPC Handler
 	workflowHandler := appgrpc.NewWorkflowHandler(workflowService)
 
-	// Create and Start the gRPC Server
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatalf("failed to listen on port 50051: %v", err)
 	}
 
 	grpcServer := grpc.NewServer()
+
+	// Register the core WorkflowService RPCs.
 	pb.RegisterWorkflowServiceServer(grpcServer, workflowHandler)
 
 	log.Println("AntFlow server listening on :50051")

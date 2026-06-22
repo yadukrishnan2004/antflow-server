@@ -16,6 +16,18 @@ service WorkflowService {
   rpc GetWorkflowResult (GetWorkflowResultRequest) returns (GetWorkflowResultResponse);
   rpc CancelWorkflow (CancelWorkflowRequest) returns (CancelWorkflowResponse);
   rpc StreamWorkflowHistory (StreamWorkflowHistoryRequest) returns (stream HistoryEvent);
+
+  // Signal RPCs — pause/resume support.
+  // SendSignal delivers a named payload to a running execution. It returns
+  // immediately; if no step is currently waiting for this signal the payload
+  // is buffered and delivered when WaitForSignal is next called.
+  rpc SendSignal (SendSignalRequest) returns (SendSignalResponse);
+
+  // PollSignal is called by a worker step that wants to pause until a named
+  // signal arrives or a timeout elapses. It is a server-streaming RPC that
+  // sends exactly one message (the signal payload) and then closes, or closes
+  // with an error on timeout / cancellation.
+  rpc PollSignal (PollSignalRequest) returns (stream SignalEvent);
 }
 
 message RegisterWorkflowRequest {
@@ -97,8 +109,6 @@ message CompleteCompensationTaskResponse {
   bool success = 1;
 }
 
-// Removed RespondWorkflowTaskCompleted
-
 message GetWorkflowResultRequest {
   string workflow_id = 1;
 }
@@ -119,4 +129,35 @@ message CancelWorkflowResponse {
 
 message StreamWorkflowHistoryRequest {
   string workflow_id = 1; // Maps to workflow execution ID
+}
+
+// ── Signal messages ───────────────────────────────────────────────────────────
+
+message SendSignalRequest {
+  // execution_id is the WorkflowExecution.ID returned by StartWorkflow.
+  string execution_id = 1;
+  // name identifies which signal this is (e.g. "payment-confirmed").
+  string name = 2;
+  // payload is an arbitrary byte blob — the step function receives it as-is.
+  bytes payload = 3;
+}
+
+message SendSignalResponse {
+  bool delivered = 1; // true if a waiter was already blocking; false if buffered
+}
+
+message PollSignalRequest {
+  string execution_id = 1;
+  string name = 2;
+  // timeout_ms is how long the server should wait before closing the stream
+  // with a DEADLINE_EXCEEDED status. 0 means wait indefinitely.
+  int64 timeout_ms = 3;
+}
+
+message SignalEvent {
+  string name = 1;
+  bytes payload = 2;
+  // timed_out is true when the stream closes because timeout_ms elapsed with
+  // no signal arriving. The SDK turns this into an ErrSignalTimeout.
+  bool timed_out = 3;
 }

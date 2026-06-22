@@ -18,13 +18,11 @@ func (i *workflowInteractor) StartWorkflow(
 		return nil, fmt.Errorf("namespace %q not found: %w", workflowName, workflow.ErrNotFound)
 	}
 
-	
 	def, err := i.workflowDefRepo.GetByName(ctx, ns.ID, workflowName)
 	if err != nil {
 		return nil, fmt.Errorf("workflow definition %q not found: %w", workflowName, err)
 	}
 
-	
 	exec := &workflow.WorkflowExecution{
 		ID:                   uuid.New().String(),
 		WorkflowDefinitionID: def.ID,
@@ -43,7 +41,6 @@ func (i *workflowInteractor) StartWorkflow(
 		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}
 
-	
 	_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 		WorkflowExecutionID: exec.ID,
 		EventType:           workflow.EventWorkflowStarted,
@@ -59,14 +56,12 @@ func (i *workflowInteractor) StartWorkflow(
 	}
 	exec.State = workflow.StateRunning
 
-	
 	steps, err := i.workflowStepRepo.GetStepsByDefinitionID(ctx, def.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get steps: %w", err)
 	}
 
 	if def.WorkflowType == workflow.IndependentWorkflow {
-	
 		for _, step := range steps {
 			t := buildTask(exec, &step, input, taskQueue)
 			if err := i.taskRepo.Create(ctx, t); err != nil {
@@ -75,7 +70,6 @@ func (i *workflowInteractor) StartWorkflow(
 			i.broker.Notify(taskQueue)
 		}
 	} else {
-	
 		if len(steps) == 0 {
 			return nil, fmt.Errorf("workflow has no steps")
 		}
@@ -112,7 +106,6 @@ func (i *workflowInteractor) GetWorkflowResult(ctx context.Context, workflowID s
 	return i.executionRepo.GetByID(ctx, workflowID)
 }
 
-
 func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID string) error {
 	exec, err := i.executionRepo.GetByID(ctx, workflowID)
 	if err != nil {
@@ -136,6 +129,11 @@ func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID stri
 		EventType:           workflow.EventWorkflowCancelled,
 		CreatedAt:           time.Now(),
 	})
+
+	// Drain any buffered signals and unblock any waiting step goroutines so
+	// they don't leak. This must happen AFTER the state is persisted so a
+	// racing WaitForSignal can see the terminal state on retry.
+	i.signals.Drain(workflowID)
 
 	return nil
 }

@@ -1034,6 +1034,237 @@ func (x *StreamWorkflowHistoryRequest) GetWorkflowId() string {
 	return ""
 }
 
+type SendSignalRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// execution_id is the WorkflowExecution.ID returned by StartWorkflow.
+	ExecutionId string `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	// name identifies which signal this is (e.g. "payment-confirmed").
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// payload is an arbitrary byte blob — the step function receives it as-is.
+	Payload       []byte `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendSignalRequest) Reset() {
+	*x = SendSignalRequest{}
+	mi := &file_api_proto_workflow_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendSignalRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendSignalRequest) ProtoMessage() {}
+
+func (x *SendSignalRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendSignalRequest.ProtoReflect.Descriptor instead.
+func (*SendSignalRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *SendSignalRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *SendSignalRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SendSignalRequest) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+type SendSignalResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Delivered     bool                   `protobuf:"varint,1,opt,name=delivered,proto3" json:"delivered,omitempty"` // true if a waiter was already blocking; false if buffered
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SendSignalResponse) Reset() {
+	*x = SendSignalResponse{}
+	mi := &file_api_proto_workflow_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SendSignalResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SendSignalResponse) ProtoMessage() {}
+
+func (x *SendSignalResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SendSignalResponse.ProtoReflect.Descriptor instead.
+func (*SendSignalResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *SendSignalResponse) GetDelivered() bool {
+	if x != nil {
+		return x.Delivered
+	}
+	return false
+}
+
+type PollSignalRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ExecutionId string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// timeout_ms is how long the server should wait before closing the stream
+	// with a DEADLINE_EXCEEDED status. 0 means wait indefinitely.
+	TimeoutMs     int64 `protobuf:"varint,3,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PollSignalRequest) Reset() {
+	*x = PollSignalRequest{}
+	mi := &file_api_proto_workflow_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PollSignalRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PollSignalRequest) ProtoMessage() {}
+
+func (x *PollSignalRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PollSignalRequest.ProtoReflect.Descriptor instead.
+func (*PollSignalRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *PollSignalRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *PollSignalRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *PollSignalRequest) GetTimeoutMs() int64 {
+	if x != nil {
+		return x.TimeoutMs
+	}
+	return 0
+}
+
+type SignalEvent struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Name    string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Payload []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	// timed_out is true when the stream closes because timeout_ms elapsed with
+	// no signal arriving. The SDK turns this into an ErrSignalTimeout.
+	TimedOut      bool `protobuf:"varint,3,opt,name=timed_out,json=timedOut,proto3" json:"timed_out,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignalEvent) Reset() {
+	*x = SignalEvent{}
+	mi := &file_api_proto_workflow_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignalEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignalEvent) ProtoMessage() {}
+
+func (x *SignalEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_workflow_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignalEvent.ProtoReflect.Descriptor instead.
+func (*SignalEvent) Descriptor() ([]byte, []int) {
+	return file_api_proto_workflow_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *SignalEvent) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SignalEvent) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *SignalEvent) GetTimedOut() bool {
+	if x != nil {
+		return x.TimedOut
+	}
+	return false
+}
+
 var File_api_proto_workflow_proto protoreflect.FileDescriptor
 
 const file_api_proto_workflow_proto_rawDesc = "" +
@@ -1118,7 +1349,22 @@ const file_api_proto_workflow_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"?\n" +
 	"\x1cStreamWorkflowHistoryRequest\x12\x1f\n" +
 	"\vworkflow_id\x18\x01 \x01(\tR\n" +
-	"workflowId2\xba\x06\n" +
+	"workflowId\"d\n" +
+	"\x11SendSignalRequest\x12!\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\fR\apayload\"2\n" +
+	"\x12SendSignalResponse\x12\x1c\n" +
+	"\tdelivered\x18\x01 \x01(\bR\tdelivered\"i\n" +
+	"\x11PollSignalRequest\x12!\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
+	"\n" +
+	"timeout_ms\x18\x03 \x01(\x03R\ttimeoutMs\"X\n" +
+	"\vSignalEvent\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload\x12\x1b\n" +
+	"\ttimed_out\x18\x03 \x01(\bR\btimedOut2\xc7\a\n" +
 	"\x0fWorkflowService\x12Y\n" +
 	"\x10RegisterWorkflow\x12!.workflow.RegisterWorkflowRequest\x1a\".workflow.RegisterWorkflowResponse\x12P\n" +
 	"\rStartWorkflow\x12\x1e.workflow.StartWorkflowRequest\x1a\x1f.workflow.StartWorkflowResponse\x12K\n" +
@@ -1128,7 +1374,11 @@ const file_api_proto_workflow_proto_rawDesc = "" +
 	"\x18CompleteCompensationTask\x12).workflow.CompleteCompensationTaskRequest\x1a*.workflow.CompleteCompensationTaskResponse\x12\\\n" +
 	"\x11GetWorkflowResult\x12\".workflow.GetWorkflowResultRequest\x1a#.workflow.GetWorkflowResultResponse\x12S\n" +
 	"\x0eCancelWorkflow\x12\x1f.workflow.CancelWorkflowRequest\x1a .workflow.CancelWorkflowResponse\x12Y\n" +
-	"\x15StreamWorkflowHistory\x12&.workflow.StreamWorkflowHistoryRequest\x1a\x16.workflow.HistoryEvent0\x01B8Z6github.com/yadukrishnan2004/antflow-server/api/grpc/pbb\x06proto3"
+	"\x15StreamWorkflowHistory\x12&.workflow.StreamWorkflowHistoryRequest\x1a\x16.workflow.HistoryEvent0\x01\x12G\n" +
+	"\n" +
+	"SendSignal\x12\x1b.workflow.SendSignalRequest\x1a\x1c.workflow.SendSignalResponse\x12B\n" +
+	"\n" +
+	"PollSignal\x12\x1b.workflow.PollSignalRequest\x1a\x15.workflow.SignalEvent0\x01B8Z6github.com/yadukrishnan2004/antflow-server/api/grpc/pbb\x06proto3"
 
 var (
 	file_api_proto_workflow_proto_rawDescOnce sync.Once
@@ -1142,7 +1392,7 @@ func file_api_proto_workflow_proto_rawDescGZIP() []byte {
 	return file_api_proto_workflow_proto_rawDescData
 }
 
-var file_api_proto_workflow_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_api_proto_workflow_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_api_proto_workflow_proto_goTypes = []any{
 	(*RegisterWorkflowRequest)(nil),          // 0: workflow.RegisterWorkflowRequest
 	(*RegisterWorkflowResponse)(nil),         // 1: workflow.RegisterWorkflowResponse
@@ -1161,10 +1411,14 @@ var file_api_proto_workflow_proto_goTypes = []any{
 	(*CancelWorkflowRequest)(nil),            // 14: workflow.CancelWorkflowRequest
 	(*CancelWorkflowResponse)(nil),           // 15: workflow.CancelWorkflowResponse
 	(*StreamWorkflowHistoryRequest)(nil),     // 16: workflow.StreamWorkflowHistoryRequest
-	(*timestamppb.Timestamp)(nil),            // 17: google.protobuf.Timestamp
+	(*SendSignalRequest)(nil),                // 17: workflow.SendSignalRequest
+	(*SendSignalResponse)(nil),               // 18: workflow.SendSignalResponse
+	(*PollSignalRequest)(nil),                // 19: workflow.PollSignalRequest
+	(*SignalEvent)(nil),                      // 20: workflow.SignalEvent
+	(*timestamppb.Timestamp)(nil),            // 21: google.protobuf.Timestamp
 }
 var file_api_proto_workflow_proto_depIdxs = []int32{
-	17, // 0: workflow.RegisterWorkflowResponse.created_at:type_name -> google.protobuf.Timestamp
+	21, // 0: workflow.RegisterWorkflowResponse.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: workflow.WorkflowService.RegisterWorkflow:input_type -> workflow.RegisterWorkflowRequest
 	2,  // 2: workflow.WorkflowService.StartWorkflow:input_type -> workflow.StartWorkflowRequest
 	4,  // 3: workflow.WorkflowService.StreamTasks:input_type -> workflow.StreamTasksRequest
@@ -1174,17 +1428,21 @@ var file_api_proto_workflow_proto_depIdxs = []int32{
 	12, // 7: workflow.WorkflowService.GetWorkflowResult:input_type -> workflow.GetWorkflowResultRequest
 	14, // 8: workflow.WorkflowService.CancelWorkflow:input_type -> workflow.CancelWorkflowRequest
 	16, // 9: workflow.WorkflowService.StreamWorkflowHistory:input_type -> workflow.StreamWorkflowHistoryRequest
-	1,  // 10: workflow.WorkflowService.RegisterWorkflow:output_type -> workflow.RegisterWorkflowResponse
-	3,  // 11: workflow.WorkflowService.StartWorkflow:output_type -> workflow.StartWorkflowResponse
-	6,  // 12: workflow.WorkflowService.StreamTasks:output_type -> workflow.StreamTaskResponse
-	8,  // 13: workflow.WorkflowService.CompleteTask:output_type -> workflow.CompleteTaskResponse
-	9,  // 14: workflow.WorkflowService.StreamCompensationTasks:output_type -> workflow.CompensationTaskResponse
-	11, // 15: workflow.WorkflowService.CompleteCompensationTask:output_type -> workflow.CompleteCompensationTaskResponse
-	13, // 16: workflow.WorkflowService.GetWorkflowResult:output_type -> workflow.GetWorkflowResultResponse
-	15, // 17: workflow.WorkflowService.CancelWorkflow:output_type -> workflow.CancelWorkflowResponse
-	5,  // 18: workflow.WorkflowService.StreamWorkflowHistory:output_type -> workflow.HistoryEvent
-	10, // [10:19] is the sub-list for method output_type
-	1,  // [1:10] is the sub-list for method input_type
+	17, // 10: workflow.WorkflowService.SendSignal:input_type -> workflow.SendSignalRequest
+	19, // 11: workflow.WorkflowService.PollSignal:input_type -> workflow.PollSignalRequest
+	1,  // 12: workflow.WorkflowService.RegisterWorkflow:output_type -> workflow.RegisterWorkflowResponse
+	3,  // 13: workflow.WorkflowService.StartWorkflow:output_type -> workflow.StartWorkflowResponse
+	6,  // 14: workflow.WorkflowService.StreamTasks:output_type -> workflow.StreamTaskResponse
+	8,  // 15: workflow.WorkflowService.CompleteTask:output_type -> workflow.CompleteTaskResponse
+	9,  // 16: workflow.WorkflowService.StreamCompensationTasks:output_type -> workflow.CompensationTaskResponse
+	11, // 17: workflow.WorkflowService.CompleteCompensationTask:output_type -> workflow.CompleteCompensationTaskResponse
+	13, // 18: workflow.WorkflowService.GetWorkflowResult:output_type -> workflow.GetWorkflowResultResponse
+	15, // 19: workflow.WorkflowService.CancelWorkflow:output_type -> workflow.CancelWorkflowResponse
+	5,  // 20: workflow.WorkflowService.StreamWorkflowHistory:output_type -> workflow.HistoryEvent
+	18, // 21: workflow.WorkflowService.SendSignal:output_type -> workflow.SendSignalResponse
+	20, // 22: workflow.WorkflowService.PollSignal:output_type -> workflow.SignalEvent
+	12, // [12:23] is the sub-list for method output_type
+	1,  // [1:12] is the sub-list for method input_type
 	1,  // [1:1] is the sub-list for extension type_name
 	1,  // [1:1] is the sub-list for extension extendee
 	0,  // [0:1] is the sub-list for field type_name
@@ -1201,7 +1459,7 @@ func file_api_proto_workflow_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_workflow_proto_rawDesc), len(file_api_proto_workflow_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
