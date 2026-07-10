@@ -23,6 +23,7 @@ type WorkflowDefinition struct {
 	Version      int
 	IsActive     bool
 	Steps        int 
+	DefaultTimeoutSeconds  int
 	CreatedAt    time.Time
 }
 
@@ -39,24 +40,25 @@ type WorkflowDefinitionStep struct {
 
 
 type WorkflowExecution struct {
-	ID                   string
-	WorkflowDefinitionID string
-	WorkflowName         string       // denormalized for fast lookup without joining definition
-	WorkflowType         WorkflowType // denormalized — avoids definition join on every task completion
-	TaskQueue            string       // the queue this execution's tasks are dispatched to
-	TotalSteps           int          // copied from definition at start time; definition may change later
-	CompletedSteps       int          // atomically incremented; replaces CountCompleted queries on task table
-	CurrentStep          int          // cursor for CHAIN workflows; unused for INDEPENDENT
-	Input                []byte
-	Result               []byte
-	State                State
-	Error                string
-	CreatedAt            time.Time
-	ScheduledAt          time.Time
-	UpdatedAt            time.Time
-	CompletedAt          *time.Time
-	CompensationTotal    int          // total compensation tasks to run
-	CompensationDone     int          // compensation tasks completed
+    ID                   string
+    WorkflowDefinitionID string
+    WorkflowName         string
+    WorkflowType         WorkflowType
+    TaskQueue            string
+    TotalSteps           int
+    CompletedSteps       int
+    CurrentStep          int
+    Input                []byte
+    Result               []byte
+    State                State
+    Error                string
+    CreatedAt            time.Time
+    ScheduledAt          time.Time
+    UpdatedAt            time.Time
+    CompletedAt          *time.Time
+    DeadlineAt           *time.Time // NEW — nil = no deadline
+    CompensationTotal    int
+    CompensationDone     int
 }
 
 type Task struct {

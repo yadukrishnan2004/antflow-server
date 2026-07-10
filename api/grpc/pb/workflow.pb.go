@@ -23,13 +23,14 @@ const (
 )
 
 type RegisterWorkflowRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Name              string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	WorkflowType      string                 `protobuf:"bytes,2,opt,name=workflow_type,json=workflowType,proto3" json:"workflow_type,omitempty"`
-	Steps             []string               `protobuf:"bytes,3,rep,name=steps,proto3" json:"steps,omitempty"`
-	CompensationSteps []string               `protobuf:"bytes,4,rep,name=compensation_steps,json=compensationSteps,proto3" json:"compensation_steps,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Name                  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	WorkflowType          string                 `protobuf:"bytes,2,opt,name=workflow_type,json=workflowType,proto3" json:"workflow_type,omitempty"`
+	Steps                 []string               `protobuf:"bytes,3,rep,name=steps,proto3" json:"steps,omitempty"`
+	CompensationSteps     []string               `protobuf:"bytes,4,rep,name=compensation_steps,json=compensationSteps,proto3" json:"compensation_steps,omitempty"`
+	DefaultTimeoutSeconds int32                  `protobuf:"varint,5,opt,name=default_timeout_seconds,json=defaultTimeoutSeconds,proto3" json:"default_timeout_seconds,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *RegisterWorkflowRequest) Reset() {
@@ -88,6 +89,13 @@ func (x *RegisterWorkflowRequest) GetCompensationSteps() []string {
 		return x.CompensationSteps
 	}
 	return nil
+}
+
+func (x *RegisterWorkflowRequest) GetDefaultTimeoutSeconds() int32 {
+	if x != nil {
+		return x.DefaultTimeoutSeconds
+	}
+	return 0
 }
 
 type RegisterWorkflowResponse struct {
@@ -151,12 +159,13 @@ func (x *RegisterWorkflowResponse) GetCreatedAt() *timestamppb.Timestamp {
 }
 
 type StartWorkflowRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
-	Input         []byte                 `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	TaskQueue     string                 `protobuf:"bytes,3,opt,name=task_queue,json=taskQueue,proto3" json:"task_queue,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId     string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	Input          []byte                 `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
+	TaskQueue      string                 `protobuf:"bytes,3,opt,name=task_queue,json=taskQueue,proto3" json:"task_queue,omitempty"`
+	TimeoutSeconds int64                  `protobuf:"varint,4,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *StartWorkflowRequest) Reset() {
@@ -208,6 +217,13 @@ func (x *StartWorkflowRequest) GetTaskQueue() string {
 		return x.TaskQueue
 	}
 	return ""
+}
+
+func (x *StartWorkflowRequest) GetTimeoutSeconds() int64 {
+	if x != nil {
+		return x.TimeoutSeconds
+	}
+	return 0
 }
 
 type StartWorkflowResponse struct {
@@ -1269,23 +1285,25 @@ var File_api_proto_workflow_proto protoreflect.FileDescriptor
 
 const file_api_proto_workflow_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"\x97\x01\n" +
+	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcf\x01\n" +
 	"\x17RegisterWorkflowRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
 	"\rworkflow_type\x18\x02 \x01(\tR\fworkflowType\x12\x14\n" +
 	"\x05steps\x18\x03 \x03(\tR\x05steps\x12-\n" +
-	"\x12compensation_steps\x18\x04 \x03(\tR\x11compensationSteps\"y\n" +
+	"\x12compensation_steps\x18\x04 \x03(\tR\x11compensationSteps\x126\n" +
+	"\x17default_timeout_seconds\x18\x05 \x01(\x05R\x15defaultTimeoutSeconds\"y\n" +
 	"\x18RegisterWorkflowResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"l\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x95\x01\n" +
 	"\x14StartWorkflowRequest\x12\x1f\n" +
 	"\vworkflow_id\x18\x01 \x01(\tR\n" +
 	"workflowId\x12\x14\n" +
 	"\x05input\x18\x02 \x01(\fR\x05input\x12\x1d\n" +
 	"\n" +
-	"task_queue\x18\x03 \x01(\tR\ttaskQueue\"r\n" +
+	"task_queue\x18\x03 \x01(\tR\ttaskQueue\x12'\n" +
+	"\x0ftimeout_seconds\x18\x04 \x01(\x03R\x0etimeoutSeconds\"r\n" +
 	"\x15StartWorkflowResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vworkflow_id\x18\x02 \x01(\tR\n" +

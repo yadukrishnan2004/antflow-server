@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"time"
@@ -60,6 +61,16 @@ func main() {
 		}
 	}()
 
+	// NEW: Run periodic workflow-deadline enforcement.
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := workflowService.ExpireOverdueWorkflows(context.Background()); err != nil {
+				log.Printf("error: failed to expire overdue workflows: %v", err)
+			}
+		}
+	}()
 	workflowHandler := appgrpc.NewWorkflowHandler(workflowService)
 
 	lis, err := net.Listen("tcp", ":50051")

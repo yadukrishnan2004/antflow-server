@@ -19,7 +19,7 @@ func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkfl
 	if taskQueue == "" {
 		taskQueue = "default"
 	}
-	exec, err := h.service.StartWorkflow(ctx, req.WorkflowId, taskQueue, req.Input)
+	exec, err := h.service.StartWorkflow(ctx, req.WorkflowId, taskQueue, req.Input, int(req.TimeoutSeconds))
 	if err != nil {
 		if errors.Is(err, workflow.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "%v", err)

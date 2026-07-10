@@ -39,13 +39,16 @@ func (s *PostgresWorkflowDefinitionRepository) Migrate() error {
 			CONSTRAINT uq_workflow_definition_namespace_name_version
 				UNIQUE (namespace_id, name, version)
 		);
-
 		-- Only one active definition per (namespace, name) at a time.
 		-- A partial index is the correct tool here; a plain UNIQUE column
 		-- constraint cannot express the WHERE clause.
 		CREATE UNIQUE INDEX IF NOT EXISTS uq_workflow_definition_active
 			ON workflow_definition (namespace_id, name)
 			WHERE is_active = TRUE;
+		
+	ALTER TABLE workflow_definition
+    ADD COLUMN IF NOT EXISTS default_timeout_seconds INTEGER NOT NULL DEFAULT 0;
+
 	`)
 	return err
 }

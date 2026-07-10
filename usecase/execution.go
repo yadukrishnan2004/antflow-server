@@ -10,33 +10,48 @@ import (
 )
 
 func (i *workflowInteractor) StartWorkflow(
-	ctx context.Context, workflowName string, taskQueue string, input []byte,
+    ctx context.Context, workflowName string, taskQueue string, input []byte, timeoutOverrideSeconds int,
 ) (*workflow.WorkflowExecution, error) {
 
-	ns, err := i.namespaceRepo.GetByName(ctx, workflowName)
-	if err != nil {
-		return nil, fmt.Errorf("namespace %q not found: %w", workflowName, workflow.ErrNotFound)
-	}
+    ns, err := i.namespaceRepo.GetByName(ctx, workflowName)
+    if err != nil {
+        return nil, fmt.Errorf("namespace %q not found: %w", workflowName, err) // also fixes the earlier err-masking bug
+    }
 
-	def, err := i.workflowDefRepo.GetByName(ctx, ns.ID, workflowName)
-	if err != nil {
-		return nil, fmt.Errorf("workflow definition %q not found: %w", workflowName, err)
-	}
+    def, err := i.workflowDefRepo.GetByName(ctx, ns.ID, workflowName)
+    if err != nil {
+        return nil, fmt.Errorf("workflow definition %q not found: %w", workflowName, err)
+    }
 
-	exec := &workflow.WorkflowExecution{
-		ID:                   uuid.New().String(),
-		WorkflowDefinitionID: def.ID,
-		WorkflowName:         def.Name,
-		WorkflowType:         def.WorkflowType,
-		TotalSteps:           def.Steps,
-		TaskQueue:            taskQueue,
-		Input:                input,
-		State:                workflow.StateCreated,
-		CurrentStep:          0,
-		ScheduledAt:          time.Now(),
-		CreatedAt:            time.Now(),
-		UpdatedAt:            time.Now(),
-	}
+    // Decide the effective timeout: an explicit per-start override wins;
+    // otherwise fall back to the definition's configured default; 0 means
+    // "no deadline" either way.
+    effectiveTimeout := def.DefaultTimeoutSeconds
+    if timeoutOverrideSeconds > 0 {
+        effectiveTimeout = timeoutOverrideSeconds
+    }
+
+    var deadline *time.Time
+    if effectiveTimeout > 0 {
+        d := time.Now().Add(time.Duration(effectiveTimeout) * time.Second)
+        deadline = &d
+    }
+
+    exec := &workflow.WorkflowExecution{
+        ID:                   uuid.New().String(),
+        WorkflowDefinitionID: def.ID,
+        WorkflowName:         def.Name,
+        WorkflowType:         def.WorkflowType,
+        TotalSteps:           def.Steps,
+        TaskQueue:            taskQueue,
+        Input:                input,
+        State:                workflow.StateCreated,
+        CurrentStep:          0,
+        DeadlineAt:           deadline, // NEW
+        ScheduledAt:          time.Now(),
+        CreatedAt:            time.Now(),
+        UpdatedAt:            time.Now(),
+    }
 	if err := i.executionRepo.Create(ctx, exec); err != nil {
 		return nil, fmt.Errorf("failed to create execution: %w", err)
 	}

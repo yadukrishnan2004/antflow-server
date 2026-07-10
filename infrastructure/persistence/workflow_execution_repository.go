@@ -62,6 +62,13 @@ func (s *PostgresWorkflowExecutionRepository) Migrate() error {
 		ALTER TABLE workflow_execution DROP CONSTRAINT IF EXISTS chk_workflow_execution_state;
 		ALTER TABLE workflow_execution ADD CONSTRAINT chk_workflow_execution_state
 			CHECK (state IN ('CREATED','RUNNING','COMPLETED','FAILED','CANCELLED','COMPENSATING'));
+
+	   ALTER TABLE workflow_execution
+    ADD COLUMN IF NOT EXISTS deadline_at TIMESTAMPTZ NULL;
+
+CREATE INDEX IF NOT EXISTS idx_workflow_execution_deadline
+    ON workflow_execution (deadline_at)
+    WHERE deadline_at IS NOT NULL;
 	`)
 	return err
 }
@@ -70,31 +77,21 @@ func (s *PostgresWorkflowExecutionRepository) Create(
 	ctx context.Context, exec *workflow.WorkflowExecution,
 ) error {
 	return s.db.QueryRowContext(ctx, `
-		INSERT INTO workflow_execution
-			(id, workflow_definition_id, workflow_name, task_queue,
-			 total_steps, completed_steps, workflow_type,
-			 input, state, current_step,
-			 scheduled_at, created_at, updated_at,
-			 compensation_total, compensation_done)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-		RETURNING created_at, updated_at
-	`,
-		exec.ID,
-		exec.WorkflowDefinitionID,
-		exec.WorkflowName,
-		exec.TaskQueue,
-		exec.TotalSteps,
-		exec.CompletedSteps,
-		string(exec.WorkflowType),
-		exec.Input,
-		string(exec.State),
-		exec.CurrentStep,
-		exec.ScheduledAt,
-		exec.CreatedAt,
-		exec.UpdatedAt,
-		exec.CompensationTotal,
-		exec.CompensationDone,
-	).Scan(&exec.CreatedAt, &exec.UpdatedAt)
+    INSERT INTO workflow_execution
+        (id, workflow_definition_id, workflow_name, task_queue,
+         total_steps, completed_steps, workflow_type,
+         input, state, current_step, deadline_at,
+         scheduled_at, created_at, updated_at,
+         compensation_total, compensation_done)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+    RETURNING created_at, updated_at
+`,
+    exec.ID, exec.WorkflowDefinitionID, exec.WorkflowName, exec.TaskQueue,
+    exec.TotalSteps, exec.CompletedSteps, string(exec.WorkflowType),
+    exec.Input, string(exec.State), exec.CurrentStep, exec.DeadlineAt, // NEW
+    exec.ScheduledAt, exec.CreatedAt, exec.UpdatedAt,
+    exec.CompensationTotal, exec.CompensationDone,
+).Scan(&exec.CreatedAt, &exec.UpdatedAt)
 }
 
 func (s *PostgresWorkflowExecutionRepository) GetByID(
@@ -228,6 +225,37 @@ func (s *PostgresWorkflowExecutionRepository) SetCompensationTotal(
 		 WHERE  id = $2`,
 		total, id)
 	return err
+}
+
+func (s *PostgresWorkflowExecutionRepository) ExpireOverdue (
+	ctx context.Context,
+)([]string, error){
+	rows, err := s.db.QueryContext(ctx, `
+        UPDATE workflow_execution
+        SET    state = 'FAILED',
+               error = 'workflow exceeded its configured timeout',
+               completed_at = NOW(),
+               updated_at = NOW()
+        WHERE  deadline_at IS NOT NULL
+          AND  deadline_at < NOW()
+          AND  state IN ('CREATED', 'RUNNING', 'COMPENSATING')
+        RETURNING id
+    `)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil{
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids,rows.Err()
 }
 
 var _ workflow.WorkflowExecutionRepository = (*PostgresWorkflowExecutionRepository)(nil)

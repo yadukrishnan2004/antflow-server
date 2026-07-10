@@ -54,6 +54,7 @@ type WorkflowExecutionRepository interface {
 	IncrementCompletedSteps(ctx context.Context, id string) (newCount int, err error)
 	IncrementCompensationDone(ctx context.Context, id string) (newCount int, err error)
 	SetCompensationTotal(ctx context.Context, id string, total int) error
+	ExpireOverdue(ctx context.Context) ([]string, error)
 }
 
 // TaskRepository handles processing constraints and execution states for individual workflow tasks.

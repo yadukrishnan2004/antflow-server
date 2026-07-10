@@ -10,7 +10,7 @@ import (
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
 
-func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string) (*workflow.WorkflowDefinition, error) {
+func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string, defaultTimeoutSeconds int) (*workflow.WorkflowDefinition, error){
 
 	ns, err := w.namespaceRepo.GetByName(ctx, name)
 	if err != nil {
@@ -49,16 +49,17 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 		return nil, fmt.Errorf("failed to check existing workflow definition: %w", err)
 	}
 
-	wf := &workflow.WorkflowDefinition{
-		ID:           uuid.New().String(),
-		NamespaceID:  ns.ID,
-		Name:         name,
-		WorkflowType: workflow.WorkflowType(workflowType),
-		Version:      nextVersion,
-		Steps:        len(stepNames),
-		IsActive:     true,
-		CreatedAt:    time.Now(),
-	}
+wf := &workflow.WorkflowDefinition{
+    ID:                    uuid.New().String(),
+    NamespaceID:           ns.ID,
+    Name:                  name,
+    WorkflowType:          workflow.WorkflowType(workflowType),
+    Version:               nextVersion,
+    Steps:                 len(stepNames),
+    DefaultTimeoutSeconds: defaultTimeoutSeconds,
+    IsActive:              true,
+    CreatedAt:             time.Now(),
+}
 
 	if err := w.workflowDefRepo.Create(ctx, wf); err != nil {
 		return nil, fmt.Errorf("failed to create workflow: %w", err)

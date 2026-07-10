@@ -8,6 +8,7 @@ const (
 	EventWorkflowCompleted EventType = "WORKFLOW_COMPLETED"
 	EventWorkflowFailed    EventType = "WORKFLOW_FAILED"
 	EventWorkflowCancelled EventType = "WORKFLOW_CANCELLED"
+	EventWorkflowTimedOut  EventType = "WORKFLOW_TIMED_OUT"
  
 	// Step-level events within a workflow execution.
 	EventStepScheduled EventType = "STEP_SCHEDULED"
