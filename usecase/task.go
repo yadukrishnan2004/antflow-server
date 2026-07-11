@@ -110,6 +110,10 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed); err != nil {
 			return fmt.Errorf("failed to mark execution failed: %w", err)
 		}
+		if err := i.taskRepo.CancelByExecution(ctx, exec.ID); err != nil {
+			log.Printf("warn: failed to cancel remaining tasks for failed execution %s: %v", exec.ID, err)
+		}
+
 		if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
