@@ -11,15 +11,23 @@ import (
 )
 
 func (h *WorkflowHandler) StartWorkflow(ctx context.Context, req *pb.StartWorkflowRequest) (*pb.StartWorkflowResponse, error) {
-	if req.WorkflowId == "" {
+	if req.Namespace == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow id is required")
+	}
+
+	id,err:=h.service.GetWorkflowIdForExecution(ctx,req.Namespace)
+	if err != nil {
+		if errors.Is(err,workflow.ErrNotFound){
+			return nil, status.Errorf(codes.NotFound, "%v", err)
+		}
+		return nil, status.Errorf(codes.Internal, "failed to start workflow: %v", err)
 	}
 
 	taskQueue := req.TaskQueue
 	if taskQueue == "" {
 		taskQueue = "default"
 	}
-	exec, err := h.service.StartWorkflow(ctx, req.WorkflowId, taskQueue, req.Input, int(req.TimeoutSeconds))
+	exec, err := h.service.StartWorkflow(ctx, id, taskQueue, req.Input, int(req.TimeoutSeconds))
 	if err != nil {
 		if errors.Is(err, workflow.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "%v", err)

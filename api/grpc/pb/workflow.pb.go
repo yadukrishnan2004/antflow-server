@@ -24,7 +24,7 @@ const (
 
 type RegisterWorkflowRequest struct {
 	state                 protoimpl.MessageState `protogen:"open.v1"`
-	Name                  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Namespace             string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	WorkflowType          string                 `protobuf:"bytes,2,opt,name=workflow_type,json=workflowType,proto3" json:"workflow_type,omitempty"`
 	Steps                 []string               `protobuf:"bytes,3,rep,name=steps,proto3" json:"steps,omitempty"`
 	CompensationSteps     []string               `protobuf:"bytes,4,rep,name=compensation_steps,json=compensationSteps,proto3" json:"compensation_steps,omitempty"`
@@ -63,9 +63,9 @@ func (*RegisterWorkflowRequest) Descriptor() ([]byte, []int) {
 	return file_api_proto_workflow_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RegisterWorkflowRequest) GetName() string {
+func (x *RegisterWorkflowRequest) GetNamespace() string {
 	if x != nil {
-		return x.Name
+		return x.Namespace
 	}
 	return ""
 }
@@ -160,7 +160,7 @@ func (x *RegisterWorkflowResponse) GetCreatedAt() *timestamppb.Timestamp {
 
 type StartWorkflowRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	WorkflowId     string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	Namespace      string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Input          []byte                 `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
 	TaskQueue      string                 `protobuf:"bytes,3,opt,name=task_queue,json=taskQueue,proto3" json:"task_queue,omitempty"`
 	TimeoutSeconds int64                  `protobuf:"varint,4,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
@@ -198,9 +198,9 @@ func (*StartWorkflowRequest) Descriptor() ([]byte, []int) {
 	return file_api_proto_workflow_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *StartWorkflowRequest) GetWorkflowId() string {
+func (x *StartWorkflowRequest) GetNamespace() string {
 	if x != nil {
-		return x.WorkflowId
+		return x.Namespace
 	}
 	return ""
 }
@@ -349,9 +349,9 @@ func (x *StreamTasksRequest) GetTaskQueue() string {
 type HistoryEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EventId       int64                  `protobuf:"varint,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
-	EventType     string                 `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`          // e.g., "WorkflowExecutionStarted", "ActivityTaskCompleted"
-	ActivityName  string                 `protobuf:"bytes,3,opt,name=activity_name,json=activityName,proto3" json:"activity_name,omitempty"` // relevant if it's an activity event
-	Result        []byte                 `protobuf:"bytes,4,opt,name=result,proto3" json:"result,omitempty"`                                 // output from the activity or input to workflow
+	EventType     string                 `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	ActivityName  string                 `protobuf:"bytes,3,opt,name=activity_name,json=activityName,proto3" json:"activity_name,omitempty"`
+	Result        []byte                 `protobuf:"bytes,4,opt,name=result,proto3" json:"result,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -920,7 +920,7 @@ func (x *GetWorkflowResultResponse) GetError() string {
 
 type CancelWorkflowRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"` // Maps to workflow execution ID
+	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1008,7 +1008,7 @@ func (x *CancelWorkflowResponse) GetSuccess() bool {
 
 type StreamWorkflowHistoryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"` // Maps to workflow execution ID
+	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1051,13 +1051,10 @@ func (x *StreamWorkflowHistoryRequest) GetWorkflowId() string {
 }
 
 type SendSignalRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// execution_id is the WorkflowExecution.ID returned by StartWorkflow.
-	ExecutionId string `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	// name identifies which signal this is (e.g. "payment-confirmed").
-	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	// payload is an arbitrary byte blob — the step function receives it as-is.
-	Payload       []byte `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ExecutionId   string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1115,7 +1112,7 @@ func (x *SendSignalRequest) GetPayload() []byte {
 
 type SendSignalResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Delivered     bool                   `protobuf:"varint,1,opt,name=delivered,proto3" json:"delivered,omitempty"` // true if a waiter was already blocking; false if buffered
+	Delivered     bool                   `protobuf:"varint,1,opt,name=delivered,proto3" json:"delivered,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1158,12 +1155,10 @@ func (x *SendSignalResponse) GetDelivered() bool {
 }
 
 type PollSignalRequest struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	ExecutionId string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	// timeout_ms is how long the server should wait before closing the stream
-	// with a DEADLINE_EXCEEDED status. 0 means wait indefinitely.
-	TimeoutMs     int64 `protobuf:"varint,3,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ExecutionId   string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	TimeoutMs     int64                  `protobuf:"varint,3,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1220,12 +1215,10 @@ func (x *PollSignalRequest) GetTimeoutMs() int64 {
 }
 
 type SignalEvent struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	Name    string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Payload []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
-	// timed_out is true when the stream closes because timeout_ms elapsed with
-	// no signal arriving. The SDK turns this into an ErrSignalTimeout.
-	TimedOut      bool `protobuf:"varint,3,opt,name=timed_out,json=timedOut,proto3" json:"timed_out,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	TimedOut      bool                   `protobuf:"varint,3,opt,name=timed_out,json=timedOut,proto3" json:"timed_out,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1285,9 +1278,9 @@ var File_api_proto_workflow_proto protoreflect.FileDescriptor
 
 const file_api_proto_workflow_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcf\x01\n" +
-	"\x17RegisterWorkflowRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
+	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd9\x01\n" +
+	"\x17RegisterWorkflowRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12#\n" +
 	"\rworkflow_type\x18\x02 \x01(\tR\fworkflowType\x12\x14\n" +
 	"\x05steps\x18\x03 \x03(\tR\x05steps\x12-\n" +
 	"\x12compensation_steps\x18\x04 \x03(\tR\x11compensationSteps\x126\n" +
@@ -1296,10 +1289,9 @@ const file_api_proto_workflow_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x95\x01\n" +
-	"\x14StartWorkflowRequest\x12\x1f\n" +
-	"\vworkflow_id\x18\x01 \x01(\tR\n" +
-	"workflowId\x12\x14\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x92\x01\n" +
+	"\x14StartWorkflowRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x14\n" +
 	"\x05input\x18\x02 \x01(\fR\x05input\x12\x1d\n" +
 	"\n" +
 	"task_queue\x18\x03 \x01(\tR\ttaskQueue\x12'\n" +

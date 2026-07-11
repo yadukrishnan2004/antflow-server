@@ -10,17 +10,11 @@ import (
 )
 
 func (i *workflowInteractor) StartWorkflow(
-    ctx context.Context, workflowName string, taskQueue string, input []byte, timeoutOverrideSeconds int,
+    ctx context.Context, workflowDefID string, taskQueue string, input []byte, timeoutOverrideSeconds int,
 ) (*workflow.WorkflowExecution, error) {
-
-    ns, err := i.namespaceRepo.GetByName(ctx, workflowName)
+    def, err := i.workflowDefRepo.GetByID(ctx, workflowDefID)
     if err != nil {
-        return nil, fmt.Errorf("namespace %q not found: %w", workflowName, err) // also fixes the earlier err-masking bug
-    }
-
-    def, err := i.workflowDefRepo.GetByName(ctx, ns.ID, workflowName)
-    if err != nil {
-        return nil, fmt.Errorf("workflow definition %q not found: %w", workflowName, err)
+        return nil, fmt.Errorf("workflow definition ID %q not found: %w", workflowDefID, err)
     }
 
     // Decide the effective timeout: an explicit per-start override wins;
@@ -163,4 +157,16 @@ func (i *workflowInteractor) GetWorkflowNameForExecution(ctx context.Context, ex
 		return "", err
 	}
 	return exec.WorkflowName, nil
+}
+
+func (i *workflowInteractor) GetWorkflowIdForExecution(ctx context.Context, workflowName string) (string, error) {
+    ns, err := i.namespaceRepo.GetByName(ctx, workflowName)
+    if err != nil {
+        return "", err
+    }
+    def, err := i.workflowDefRepo.GetByName(ctx, ns.ID, workflowName)
+    if err != nil {
+        return "", err
+    }
+    return def.ID, nil
 }

@@ -21,6 +21,7 @@ type WorkflowService interface {
 	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)
 	GetHistoryAfter(ctx context.Context, workflowID string, afterID int64) ([]workflow.HistoryEvent, error)
 	GetWorkflowNameForExecution(ctx context.Context, executionID string) (string, error)
+	GetWorkflowIdForExecution(ctx context.Context, workflowName string) (string, error)
 	SubscribeToQueue(taskQueue string) (<-chan struct{}, func())
 
 	// Signal / pause-resume support.

@@ -11,11 +11,11 @@ import (
 
 
 func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.RegisterWorkflowRequest) (*pb.RegisterWorkflowResponse, error) {
-	if req.Name == "" {
+	if req.Namespace == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow name is required")
 	}
 
-	wf, err := h.service.RegisterWorkflow(ctx, req.Name, req.WorkflowType, req.Steps, req.CompensationSteps, int(req.DefaultTimeoutSeconds))
+	wf, err := h.service.RegisterWorkflow(ctx, req.Namespace, req.WorkflowType, req.Steps, req.CompensationSteps, int(req.DefaultTimeoutSeconds))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to register workflow: %v", err)
 	}

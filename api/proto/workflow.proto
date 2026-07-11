@@ -31,9 +31,9 @@ service WorkflowService {
 }
 
 message RegisterWorkflowRequest {
-  string name = 1;
+  string namespace = 1;      
   string workflow_type = 2;
-  repeated string steps = 3;
+  repeated string steps = 3; 
   repeated string compensation_steps = 4;
   int32 default_timeout_seconds = 5; 
 }
@@ -45,7 +45,7 @@ message RegisterWorkflowResponse {
 }
 
 message StartWorkflowRequest {
-  string workflow_id = 1;
+  string namespace = 1;   
   bytes input = 2;
   string task_queue = 3;
   int64 timeout_seconds = 4; 
@@ -65,9 +65,9 @@ message StreamTasksRequest {
 
 message HistoryEvent {
   int64 event_id = 1;
-  string event_type = 2; // e.g., "WorkflowExecutionStarted", "ActivityTaskCompleted"
-  string activity_name = 3; // relevant if it's an activity event
-  bytes result = 4; // output from the activity or input to workflow
+  string event_type = 2; 
+  string activity_name = 3;
+  bytes result = 4; 
 }
 
 message StreamTaskResponse {
@@ -122,7 +122,7 @@ message GetWorkflowResultResponse {
 }
 
 message CancelWorkflowRequest {
-  string workflow_id = 1; // Maps to workflow execution ID
+  string workflow_id = 1;
 }
 
 message CancelWorkflowResponse {
@@ -130,36 +130,29 @@ message CancelWorkflowResponse {
 }
 
 message StreamWorkflowHistoryRequest {
-  string workflow_id = 1; // Maps to workflow execution ID
+  string workflow_id = 1; 
 }
 
 // ── Signal messages ───────────────────────────────────────────────────────────
 
 message SendSignalRequest {
-  // execution_id is the WorkflowExecution.ID returned by StartWorkflow.
   string execution_id = 1;
-  // name identifies which signal this is (e.g. "payment-confirmed").
   string name = 2;
-  // payload is an arbitrary byte blob — the step function receives it as-is.
   bytes payload = 3;
 }
 
 message SendSignalResponse {
-  bool delivered = 1; // true if a waiter was already blocking; false if buffered
+  bool delivered = 1; 
 }
 
 message PollSignalRequest {
   string execution_id = 1;
   string name = 2;
-  // timeout_ms is how long the server should wait before closing the stream
-  // with a DEADLINE_EXCEEDED status. 0 means wait indefinitely.
   int64 timeout_ms = 3;
 }
 
 message SignalEvent {
   string name = 1;
   bytes payload = 2;
-  // timed_out is true when the stream closes because timeout_ms elapsed with
-  // no signal arriving. The SDK turns this into an ErrSignalTimeout.
   bool timed_out = 3;
 }
