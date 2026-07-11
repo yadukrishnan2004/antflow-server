@@ -97,6 +97,7 @@ func (i *workflowInteractor) startCompensation(
 			Error:               "Saga rolled back: no successful steps to compensate",
 			CreatedAt:           time.Now(),
 		})
+		i.signals.Drain(exec.ID)
 		return nil
 	}
 
@@ -270,6 +271,7 @@ func (i *workflowInteractor) CompleteCompensationTask(
 			CreatedAt:           time.Now(),
 		})
 		log.Printf("info: saga rollback complete for exec=%s", exec.ID)
+		i.signals.Drain(exec.ID)
 		return nil
 	}
 
@@ -321,6 +323,7 @@ func (i *workflowInteractor) CompleteCompensationTask(
 			CreatedAt:           time.Now(),
 		})
 		log.Printf("info: saga rollback complete (no more steps) for exec=%s", exec.ID)
+		i.signals.Drain(exec.ID)
 		return nil
 	}
 
