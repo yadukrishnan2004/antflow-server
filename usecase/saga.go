@@ -220,6 +220,7 @@ func (i *workflowInteractor) CompleteCompensationTask(
 		})
 		_ = i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed)
 		_ = i.compensationTaskRepo.Delete(ctx, t.ID)
+		i.signals.Drain(exec.ID)
 		return nil
 	}
 

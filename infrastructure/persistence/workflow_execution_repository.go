@@ -98,7 +98,7 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 	ctx context.Context, id string,
 ) (*workflow.WorkflowExecution, error) {
 	exec := &workflow.WorkflowExecution{}
-	var completedAt sql.NullTime
+	var completedAt, deadlineAt sql.NullTime
 	var stateStr, wfTypeStr string
 
 	err := s.db.QueryRowContext(ctx, `
@@ -106,7 +106,7 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 		       state, COALESCE(error,''), current_step, completed_steps,
 		       created_at, scheduled_at, updated_at, completed_at,
 		       workflow_name, workflow_type, total_steps, task_queue,
-		       compensation_total, compensation_done
+		       compensation_total, compensation_done, deadline_at
 		FROM   workflow_execution
 		WHERE  id = $1
 	`, id).Scan(
@@ -128,6 +128,7 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 		&exec.TaskQueue,
 		&exec.CompensationTotal,
 		&exec.CompensationDone,
+		&deadlineAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, workflow.ErrNotFound
@@ -140,6 +141,9 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 	exec.WorkflowType = workflow.WorkflowType(wfTypeStr)
 	if completedAt.Valid {
 		exec.CompletedAt = &completedAt.Time
+	}
+	if deadlineAt.Valid {
+		exec.DeadlineAt = &deadlineAt.Time
 	}
 	return exec, nil
 }
