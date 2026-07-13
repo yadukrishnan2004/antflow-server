@@ -50,6 +50,11 @@ func main() {
 		storage.Checkpoint,
 		storage.TxManager,
 	)
+	
+	// Recover orphaned executions on startup boot
+	if err := workflowService.RecoverWorkflows(context.Background()); err != nil {
+		log.Printf("warn: startup workflow recovery encountered error: %v", err)
+	}
 
 	// Run periodic background task recovery safety net.
 	go func() {

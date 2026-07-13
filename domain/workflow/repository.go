@@ -56,6 +56,7 @@ type WorkflowExecutionRepository interface {
 	SetCompensationTotal(ctx context.Context, id string, total int) error
 	ExpireOverdue(ctx context.Context) ([]string, error)
 	SaveError(ctx context.Context, id string, errMsg string) error
+	GetActiveExecutions(ctx context.Context) ([]*WorkflowExecution, error)
 }
 
 // TaskRepository handles processing constraints and execution states for individual workflow tasks.
@@ -85,6 +86,7 @@ type TaskRepository interface {
 	// This does not delete rows — CANCELLED tasks remain for audit/debugging,
 	// consistent with how workflow_execution rows are never deleted either.
 	CancelByExecution(ctx context.Context, executionID string) error
+	HasActiveTasks(ctx context.Context, executionID string) (bool, error)
 }
 
 type HistoryEventRepository interface {

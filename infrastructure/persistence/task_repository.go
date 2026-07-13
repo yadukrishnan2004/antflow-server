@@ -260,4 +260,13 @@ func (s *PostgresTaskRepository) ResetTimedOutTasks() error {
 	return err
 }
 
+func (s *PostgresTaskRepository) HasActiveTasks(ctx context.Context, executionID string) (bool, error) {
+    var count int
+    err := s.db.QueryRowContext(ctx, `
+        SELECT COUNT(*) FROM task 
+        WHERE workflow_execution_id = $1 AND state IN ('CREATED', 'SCHEDULED', 'RUNNING')
+    `, executionID).Scan(&count)
+    return count > 0, err
+}
+
 var _ workflow.TaskRepository = (*PostgresTaskRepository)(nil)

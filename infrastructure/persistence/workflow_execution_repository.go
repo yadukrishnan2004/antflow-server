@@ -271,4 +271,51 @@ func (s *PostgresWorkflowExecutionRepository) SaveError(ctx context.Context, id 
 	return err
 }
 
+func (s *PostgresWorkflowExecutionRepository) GetActiveExecutions(ctx context.Context) ([]*workflow.WorkflowExecution,error) {
+	rows, err:= s.db.QueryContext(ctx,`
+        SELECT id, workflow_definition_id, input, result,
+               state, COALESCE(error,''), current_step, completed_steps,
+               created_at, scheduled_at, updated_at, completed_at,
+               workflow_name, workflow_type, total_steps, task_queue,
+               compensation_total, compensation_done, deadline_at
+        FROM   workflow_execution
+        WHERE  state IN ('RUNNING', 'COMPENSATING')
+		`)
+
+		if err != nil {
+			return nil,err
+		}
+
+		defer rows.Close()
+
+		var execs []*workflow.WorkflowExecution
+
+		for rows.Next() {
+			 exec := &workflow.WorkflowExecution{}
+			 var completedAt, deadlineAt sql.NullTime
+        var stateStr, wfTypeStr string
+        err := rows.Scan(
+            &exec.ID, &exec.WorkflowDefinitionID, &exec.Input, &exec.Result,
+            &stateStr, &exec.Error, &exec.CurrentStep, &exec.CompletedSteps,
+            &exec.CreatedAt, &exec.ScheduledAt, &exec.UpdatedAt, &completedAt,
+            &exec.WorkflowName, &wfTypeStr, &exec.TotalSteps, &exec.TaskQueue,
+            &exec.CompensationTotal, &exec.CompensationDone, &deadlineAt,
+        )
+        if err != nil {
+            return nil, err
+        }
+        exec.State = workflow.State(stateStr)
+        exec.WorkflowType = workflow.WorkflowType(wfTypeStr)
+        if completedAt.Valid {
+            exec.CompletedAt = &completedAt.Time
+        }
+        if deadlineAt.Valid {
+            exec.DeadlineAt = &deadlineAt.Time
+        }
+        execs = append(execs, exec)
+    }
+    return execs, rows.Err()
+
+}
+
 var _ workflow.WorkflowExecutionRepository = (*PostgresWorkflowExecutionRepository)(nil)

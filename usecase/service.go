@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 	"time"
-
+	"github.com/google/uuid"
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
 
@@ -33,6 +33,7 @@ type WorkflowService interface {
 	// timeout elapses. Zero timeout means wait indefinitely (bounded by ctx).
 	WaitForSignal(ctx context.Context, executionID, name string, timeout time.Duration) ([]byte, error)
 	ExpireOverdueWorkflows(ctx context.Context) error
+	RecoverWorkflows(ctx context.Context) error
 }
 
 type workflowInteractor struct {
@@ -137,4 +138,73 @@ func (i *workflowInteractor) ExpireOverdueWorkflows(ctx context.Context) error {
     }
 
     return nil
+}
+
+
+func (i *workflowInteractor) RecoverWorkflows(ctx context.Context) error {
+	execs, err := i.executionRepo.GetActiveExecutions(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, exec := range execs {
+		if exec.State == workflow.StateRunning {
+			hasTasks, err := i.taskRepo.HasActiveTasks(ctx, exec.ID)
+			if err != nil {
+				log.Printf("error checking active tasks for execution %s: %v", exec.ID, err)
+				continue
+			}
+			
+			// If the workflow is RUNNING but has no scheduled task, recover it using checkpoints!
+			if !hasTasks {
+				log.Printf("info: recovering orphaned execution %s at step %d", exec.ID, exec.CurrentStep)
+				
+				// 1. Get the snapshot from the latest checkpoint
+				checkpoint, err := i.checkpointRepo.GetLatest(ctx, exec.ID, exec.CurrentStep)
+				var input []byte
+				if err == nil && checkpoint != nil {
+					input = checkpoint.StateSnapshot
+				} else {
+					// Fallback to original input if it crashed on step 1 before any checkpoints
+					input = exec.Input
+				}
+
+				// 2. Load the definition for the next step
+				nextIndex := exec.CurrentStep + 1
+				nextStep, err := i.workflowStepRepo.GetByDefinitionAndIndex(ctx, exec.WorkflowDefinitionID, nextIndex)
+				if err != nil {
+					log.Printf("error finding next step for execution recovery %s: %v", exec.ID, err)
+					continue
+				}
+
+				resolvedQueue := nextStep.TaskQueue
+				if resolvedQueue == "" {
+					resolvedQueue = exec.TaskQueue
+				}
+
+				// 3. Reschedule the task
+				task := &workflow.Task{
+					ID:                  uuid.New().String(),
+					WorkflowExecutionID: exec.ID,
+					StepIndex:           nextIndex,
+					StepName:            nextStep.StepName,
+					TaskQueue:           resolvedQueue,
+					Input:               input,
+					State:               workflow.StateCreated,
+					Attempt:             0,
+					MaxAttempts:         3,
+					ScheduledAt:         time.Now(),
+				}
+
+				if err := i.taskRepo.Create(ctx, task); err != nil {
+					log.Printf("error saving recovery task for execution %s: %v", exec.ID, err)
+					continue
+				}
+
+				i.broker.Notify(resolvedQueue)
+				log.Printf("info: successfully recovered execution %s, scheduled task %s in queue %s", exec.ID, task.ID, resolvedQueue)
+			}
+		}
+	}
+	return nil
 }
