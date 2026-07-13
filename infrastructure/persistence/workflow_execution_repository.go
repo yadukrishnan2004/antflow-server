@@ -262,4 +262,13 @@ func (s *PostgresWorkflowExecutionRepository) ExpireOverdue (
 	return ids,rows.Err()
 }
 
+func (s *PostgresWorkflowExecutionRepository) SaveError(ctx context.Context, id string, errMsg string)error{
+	_,err := getDB(ctx, s.db).ExecContext(ctx,`
+	UPDATE workflow_execution
+	SET error=$1, updated_at = NOW()
+	WHERE id=$2
+	`, errMsg,id)
+	return err
+}
+
 var _ workflow.WorkflowExecutionRepository = (*PostgresWorkflowExecutionRepository)(nil)

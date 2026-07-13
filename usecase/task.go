@@ -90,29 +90,33 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 					CreatedAt:           time.Now(),
 				})
 
-				if err := i.startCompensation(txCtx, exec, t.StepIndex); err != nil {
-					log.Printf("error: failed to start saga compensation: %v", err)
-					_ = i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed)
-					_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
-						WorkflowExecutionID: exec.ID,
-						EventType:           workflow.EventWorkflowFailed,
-						Error:               fmt.Sprintf("Saga compensation start failed: %v", err),
-						CreatedAt:           time.Now(),
-					})
-					// Drain signals so waiting step goroutines don't leak.
-					i.signals.Drain(exec.ID)
-				}
-				_ = i.taskRepo.Delete(txCtx, t.ID)
-				return nil
+							if err := i.startCompensation(txCtx, exec, t.StepIndex); err != nil {
+				log.Printf("error: failed to start saga compensation: %v", err)
+				_ = i.executionRepo.SaveError(txCtx, exec.ID, fmt.Sprintf("Saga compensation start failed: %v", err))
+				_ = i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed)
+				_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+					WorkflowExecutionID: exec.ID,
+					EventType:           workflow.EventWorkflowFailed,
+					Error:               fmt.Sprintf("Saga compensation start failed: %v", err),
+					CreatedAt:           time.Now(),
+				})
+				i.signals.Drain(exec.ID)
+			}
+			_ = i.taskRepo.Delete(txCtx, t.ID)
+			return nil
 			}
 
-			// Non-saga workflow: mark execution FAILED immediately.
-			if err := workflow.ValidateTransition(exec.State, workflow.StateFailed); err != nil {
-				return fmt.Errorf("cannot mark execution failed: %w", err)
-			}
-			if err := i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed); err != nil {
-				return fmt.Errorf("failed to mark execution failed: %w", err)
-			}
+		// Non-saga workflow: mark execution FAILED immediately.
+		if err := workflow.ValidateTransition(exec.State, workflow.StateFailed); err != nil {
+			return fmt.Errorf("cannot mark execution failed: %w", err)
+		}
+		// Save error message to database first
+		if err := i.executionRepo.SaveError(txCtx, exec.ID, errString); err != nil {
+			return fmt.Errorf("failed to save execution error: %w", err)
+		}
+		if err := i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed); err != nil {
+			return fmt.Errorf("failed to mark execution failed: %w", err)
+		}
 			if err := i.taskRepo.CancelByExecution(txCtx, exec.ID); err != nil {
 				log.Printf("warn: failed to cancel remaining tasks for failed execution %s: %v", exec.ID, err)
 			}

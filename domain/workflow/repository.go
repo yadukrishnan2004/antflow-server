@@ -55,6 +55,7 @@ type WorkflowExecutionRepository interface {
 	IncrementCompensationDone(ctx context.Context, id string) (newCount int, err error)
 	SetCompensationTotal(ctx context.Context, id string, total int) error
 	ExpireOverdue(ctx context.Context) ([]string, error)
+	SaveError(ctx context.Context, id string, errMsg string) error
 }
 
 // TaskRepository handles processing constraints and execution states for individual workflow tasks.
@@ -123,5 +124,5 @@ type CompensationTaskRepository interface {
 }
 
 type TransactionManager interface {
-	RunInTx(ctx context.Context, fn func(ctx context.Context)error)error
+	RunInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }

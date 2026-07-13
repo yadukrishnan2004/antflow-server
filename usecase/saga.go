@@ -198,31 +198,33 @@ func (i *workflowInteractor) CompleteCompensationTask(
 				return nil
 			}
 
-			// Permanent failure — the saga rollback itself failed.
-			log.Printf("error: compensation task permanently failed stepIndex=%d err=%s", t.StepIndex, errString)
+		// Permanent failure — the saga rollback itself failed.
+		log.Printf("error: compensation task permanently failed stepIndex=%d err=%s", t.StepIndex, errString)
 
-			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
-				WorkflowExecutionID: exec.ID,
-				StepIndex:           &t.StepIndex,
-				StepName:            &t.StepName,
-				EventType:           workflow.EventCompensationFailed,
-				Error:               errString,
-				CreatedAt:           time.Now(),
-			})
-			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
-				WorkflowExecutionID: exec.ID,
-				EventType:           workflow.EventSagaRollbackFailed,
-				Error:               errString,
-				CreatedAt:           time.Now(),
-			})
-			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
-				WorkflowExecutionID: exec.ID,
-				EventType:           workflow.EventWorkflowFailed,
-				Error:               fmt.Sprintf("Saga rollback failed at step %s: %s", t.StepName, errString),
-				CreatedAt:           time.Now(),
-			})
-			_ = i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed)
-			_ = i.compensationTaskRepo.Delete(txCtx, t.ID)
+		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+			WorkflowExecutionID: exec.ID,
+			StepIndex:           &t.StepIndex,
+			StepName:            &t.StepName,
+			EventType:           workflow.EventCompensationFailed,
+			Error:               errString,
+			CreatedAt:           time.Now(),
+		})
+		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+			WorkflowExecutionID: exec.ID,
+			EventType:           workflow.EventSagaRollbackFailed,
+			Error:               errString,
+			CreatedAt:           time.Now(),
+		})
+		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+			WorkflowExecutionID: exec.ID,
+			EventType:           workflow.EventWorkflowFailed,
+			Error:               fmt.Sprintf("Saga rollback failed at step %s: %s", t.StepName, errString),
+			CreatedAt:           time.Now(),
+		})
+		// Save saga rollback failure reason to database
+		_ = i.executionRepo.SaveError(txCtx, exec.ID, fmt.Sprintf("Saga rollback failed at step %s: %s", t.StepName, errString))
+		_ = i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed)
+		_ = i.compensationTaskRepo.Delete(txCtx, t.ID)
 			i.signals.Drain(exec.ID)
 			return nil
 		}
