@@ -12,74 +12,84 @@ import (
 
 func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string, defaultTimeoutSeconds int) (*workflow.WorkflowDefinition, error){
 
-	ns, err := w.namespaceRepo.GetByName(ctx, name)
-	if err != nil {
-		if errors.Is(err, workflow.ErrNotFound) {
-			ns = &workflow.Namespace{
-				ID:        uuid.New().String(),
-				Name:      name,
-				CreatedAt: time.Now(),
-			}
-			if err := w.namespaceRepo.Create(ctx, ns); err != nil {
-				return nil, fmt.Errorf("failed to auto-create namespace: %w", err)
-			}
-		} else {
-			return nil, fmt.Errorf("failed to get namespace: %w", err)
-		}
-	}
+	var wf *workflow.WorkflowDefinition
 
-	nextVersion := 1
-
-	existingDef, err := w.workflowDefRepo.GetByName(ctx, ns.ID, name)
-	if err == nil && existingDef != nil {
-		existingSteps, err := w.workflowStepRepo.GetStepsByDefinitionID(ctx, existingDef.ID)
+	err := w.txManager.RunInTx(ctx, func(txCtx context.Context) error {
+		ns, err := w.namespaceRepo.GetByName(txCtx, name)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load existing steps: %w", err)
+			if errors.Is(err, workflow.ErrNotFound) {
+				ns = &workflow.Namespace{
+					ID:        uuid.New().String(),
+					Name:      name,
+					CreatedAt: time.Now(),
+				}
+				if err := w.namespaceRepo.Create(txCtx, ns); err != nil {
+					return fmt.Errorf("failed to auto-create namespace: %w", err)
+				}
+			} else {
+				return fmt.Errorf("failed to get namespace: %w", err)
+			}
 		}
 
-		if stepListsEqual(existingSteps, stepNames, compensationStepNames) {
-			return existingDef, nil
+		nextVersion := 1
+
+		existingDef, err := w.workflowDefRepo.GetByName(txCtx, ns.ID, name)
+		if err == nil && existingDef != nil {
+			existingSteps, err := w.workflowStepRepo.GetStepsByDefinitionID(txCtx, existingDef.ID)
+			if err != nil {
+				return fmt.Errorf("failed to load existing steps: %w", err)
+			}
+
+			if stepListsEqual(existingSteps, stepNames, compensationStepNames) {
+				wf = existingDef
+				return nil
+			}
+
+			if err := w.workflowDefRepo.Deactivate(txCtx, existingDef.ID); err != nil {
+				return fmt.Errorf("failed to deactivate previous definition: %w", err)
+			}
+			nextVersion = existingDef.Version + 1
+		} else if err != nil && !errors.Is(err, workflow.ErrNotFound) {
+			return fmt.Errorf("failed to check existing workflow definition: %w", err)
 		}
 
-		if err := w.workflowDefRepo.Deactivate(ctx, existingDef.ID); err != nil {
-			return nil, fmt.Errorf("failed to deactivate previous definition: %w", err)
+		wf = &workflow.WorkflowDefinition{
+			ID:                    uuid.New().String(),
+			NamespaceID:           ns.ID,
+			Name:                  name,
+			WorkflowType:          workflow.WorkflowType(workflowType),
+			Version:               nextVersion,
+			Steps:                 len(stepNames),
+			DefaultTimeoutSeconds: defaultTimeoutSeconds,
+			IsActive:              true,
+			CreatedAt:             time.Now(),
 		}
-		nextVersion = existingDef.Version + 1
-	} else if err != nil && !errors.Is(err, workflow.ErrNotFound) {
-		return nil, fmt.Errorf("failed to check existing workflow definition: %w", err)
-	}
 
-wf := &workflow.WorkflowDefinition{
-    ID:                    uuid.New().String(),
-    NamespaceID:           ns.ID,
-    Name:                  name,
-    WorkflowType:          workflow.WorkflowType(workflowType),
-    Version:               nextVersion,
-    Steps:                 len(stepNames),
-    DefaultTimeoutSeconds: defaultTimeoutSeconds,
-    IsActive:              true,
-    CreatedAt:             time.Now(),
-}
+		if err := w.workflowDefRepo.Create(txCtx, wf); err != nil {
+			return fmt.Errorf("failed to create workflow: %w", err)
+		}
 
-	if err := w.workflowDefRepo.Create(ctx, wf); err != nil {
-		return nil, fmt.Errorf("failed to create workflow: %w", err)
-	}
+		for idx, stepName := range stepNames {
+			var compName string
+			if idx < len(compensationStepNames) {
+				compName = compensationStepNames[idx]
+			}
+			step := &workflow.WorkflowDefinitionStep{
+				ID:                   uuid.New().String(),
+				WorkflowDefinitionID: wf.ID,
+				StepName:             stepName,
+				CompensationStepName: compName,
+				StepIndex:            idx + 1,
+			}
+			if err := w.workflowStepRepo.Create(txCtx, step); err != nil {
+				return fmt.Errorf("failed to create workflow steps: %w", err)
+			}
+		}
+		return nil
+	})
 
-	for idx, stepName := range stepNames {
-		var compName string
-		if idx < len(compensationStepNames) {
-			compName = compensationStepNames[idx]
-		}
-		step := &workflow.WorkflowDefinitionStep{
-			ID:                   uuid.New().String(),
-			WorkflowDefinitionID: wf.ID,
-			StepName:             stepName,
-			CompensationStepName: compName,
-			StepIndex:            idx + 1,
-		}
-		if err := w.workflowStepRepo.Create(ctx, step); err != nil {
-			return nil, fmt.Errorf("failed to create workflow steps: %w", err)
-		}
+	if err != nil {
+		return nil, err
 	}
 	return wf, nil
 }

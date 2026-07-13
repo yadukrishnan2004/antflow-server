@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_workflow_execution_deadline
 func (s *PostgresWorkflowExecutionRepository) Create(
 	ctx context.Context, exec *workflow.WorkflowExecution,
 ) error {
-	return s.db.QueryRowContext(ctx, `
+	return getDB(ctx, s.db).QueryRowContext(ctx, `
     INSERT INTO workflow_execution
         (id, workflow_definition_id, workflow_name, task_queue,
          total_steps, completed_steps, workflow_type,
@@ -154,7 +154,7 @@ func (s *PostgresWorkflowExecutionRepository) UpdateState(
 	var err error
 	switch state {
 	case workflow.StateCompleted, workflow.StateFailed, workflow.StateCancelled:
-		_, err = s.db.ExecContext(ctx,
+		_, err = getDB(ctx, s.db).ExecContext(ctx,
 			`UPDATE workflow_execution
 			 SET state=$1, completed_at=NOW(), updated_at=NOW()
 			 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,

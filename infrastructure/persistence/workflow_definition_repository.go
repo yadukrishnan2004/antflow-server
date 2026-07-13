@@ -59,7 +59,7 @@ func (s *PostgresWorkflowDefinitionRepository) Create(
 	if w.Version == 0 {
 		w.Version = 1
 	}
-	return s.db.QueryRowContext(ctx, `
+	return getDB(ctx,s.db).QueryRowContext(ctx, `
 		INSERT INTO workflow_definition
 			(id, namespace_id, name, workflow_type, version, is_active, steps, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -75,7 +75,7 @@ func (s *PostgresWorkflowDefinitionRepository) Create(
 func (s *PostgresWorkflowDefinitionRepository) Deactivate(
 	ctx context.Context, id string,
 ) error {
-	res, err := s.db.ExecContext(ctx, `
+	res, err := getDB(ctx, s.db).ExecContext(ctx, `
 		UPDATE workflow_definition
 		SET    is_active = FALSE
 		WHERE  id = $1

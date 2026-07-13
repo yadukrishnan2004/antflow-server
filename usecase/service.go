@@ -55,6 +55,8 @@ type workflowInteractor struct {
 
 	// signals handles pause/resume for workflow steps.
 	signals *SignalStore
+
+	txManager			workflow.TransactionManager
 }
 
 func New(
@@ -66,6 +68,7 @@ func New(
 	compensationTaskRepo workflow.CompensationTaskRepository,
 	historyRepo workflow.HistoryEventRepository,
 	checkpointRepo workflow.CheckpointRepository,
+    txManager      workflow.TransactionManager,
 ) WorkflowService {
 	return &workflowInteractor{
 		namespaceRepo:        namespaceRepo,
@@ -78,6 +81,7 @@ func New(
 		checkpointRepo:       checkpointRepo,
 		broker:               NewTaskBroker(),
 		signals:              NewSignalStore(),
+		txManager: 			  txManager,
 	}
 }
 

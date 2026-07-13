@@ -48,6 +48,7 @@ func main() {
 		storage.CompensationTask,
 		storage.HistoryEvent,
 		storage.Checkpoint,
+		storage.TxManager,
 	)
 
 	// Run periodic background task recovery safety net.

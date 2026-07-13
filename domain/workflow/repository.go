@@ -121,3 +121,7 @@ type CompensationTaskRepository interface {
 	GetPendingByExecution(ctx context.Context, executionID string) ([]CompensationTask, error)
 	CancelByExecution(ctx context.Context, executionID string) error
 }
+
+type TransactionManager interface {
+	RunInTx(ctx context.Context, fn func(ctx context.Context)error)error
+}

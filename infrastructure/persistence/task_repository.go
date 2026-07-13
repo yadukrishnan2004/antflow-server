@@ -82,7 +82,7 @@ func (s *PostgresTaskRepository) Migrate() error {
 }
 
 func (s *PostgresTaskRepository) Create(ctx context.Context, task *workflow.Task) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := getDB(ctx, s.db).ExecContext(ctx, `
 		INSERT INTO task
 			(id, workflow_execution_id, step_index, step_name, task_queue,
 			 input, state, scheduled_at, attempt, max_attempts)
@@ -251,7 +251,7 @@ func (s *PostgresTaskRepository) UpdateState(ctx context.Context, id string, sta
 // already COMPLETED or FAILED are left untouched — they're terminal and
 // represent real work that happened, not pending work to cancel.
 func (s *PostgresTaskRepository) CancelByExecution(ctx context.Context, executionID string) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := getDB(ctx, s.db).ExecContext(ctx, `
 		UPDATE task
 		SET    state = 'CANCELLED', locked_until = NULL
 		WHERE  workflow_execution_id = $1

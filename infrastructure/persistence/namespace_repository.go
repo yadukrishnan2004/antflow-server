@@ -31,7 +31,7 @@ func (s *PostgresNamespaceRepository) Create(ctx context.Context, ns *workflow.N
 
 func (s *PostgresNamespaceRepository) GetByID(ctx context.Context, id string) (*workflow.Namespace, error) {
 	ns := &workflow.Namespace{}
-	err := s.db.QueryRowContext(ctx,
+	err := getDB(ctx, s.db).QueryRowContext(ctx,
 		`SELECT id, name, created_at FROM namespace WHERE id = $1`, id,
 	).Scan(&ns.ID, &ns.Name, &ns.CreatedAt)
 	if err == sql.ErrNoRows {

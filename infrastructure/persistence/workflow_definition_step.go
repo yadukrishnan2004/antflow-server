@@ -37,7 +37,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) Migrate() error {
 func (s *PostgresWorkflowDefinitionStepRepository) Create(
 	ctx context.Context, step *workflow.WorkflowDefinitionStep,
 ) error {
-	return s.db.QueryRowContext(ctx, `
+	return getDB(ctx,s.db).QueryRowContext(ctx, `
 		INSERT INTO workflow_definition_step
 			(workflow_definition_id, step_index, step_name, compensation_step_name, task_queue, timeout_seconds)
 		VALUES ($1, $2, $3, $4, $5, $6)
@@ -85,7 +85,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetByDefinitionAndIndex(
 	ctx context.Context, definitionID string, stepIndex int,
 ) (*workflow.WorkflowDefinitionStep, error) {
 	step := &workflow.WorkflowDefinitionStep{}
-	err := s.db.QueryRowContext(ctx, `
+	err := getDB(ctx,s.db).QueryRowContext(ctx, `
 		SELECT id, workflow_definition_id, step_index, step_name,
 		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds
 		FROM   workflow_definition_step

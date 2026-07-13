@@ -242,7 +242,7 @@ func (s *PostgresCompensationTaskRepository) GetPendingByExecution(
 }
 
 func (s *PostgresCompensationTaskRepository) CancelByExecution(ctx context.Context, executionID string) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := getDB(ctx, s.db).ExecContext(ctx, `
 		UPDATE compensation_task
 		SET    state = 'CANCELLED', locked_until = NULL
 		WHERE  workflow_execution_id = $1

@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -18,6 +19,7 @@ type Storage struct {
 	HistoryEvent           *PostgresHistoryEventRepository
 	Checkpoint             *PostgresCheckpointRepository
 	CompensationTask       *PostgresCompensationTaskRepository
+	TxManager              *PostgresTransactionManager
 }
 
 type PostgresNamespaceRepository struct{ db *sql.DB }
@@ -27,6 +29,7 @@ type PostgresWorkflowExecutionRepository struct{ db *sql.DB }
 type PostgresTaskRepository struct{ db *sql.DB }
 type PostgresHistoryEventRepository struct{ db *sql.DB }
 type PostgresCheckpointRepository struct{ db *sql.DB }
+type PostgresTransactionManager struct {db *sql.DB}
 
 // DBConfig holds optional connection-pool tuning. Zero values use the defaults
 // below, which are reasonable for a single-server orchestrator.
@@ -85,5 +88,24 @@ func New(dsn string, cfg ...DBConfig) (*Storage, error) {
 		HistoryEvent:           &PostgresHistoryEventRepository{db: db},
 		Checkpoint:             &PostgresCheckpointRepository{db: db},
 		CompensationTask:       &PostgresCompensationTaskRepository{db: db},
+		TxManager: 				&PostgresTransactionManager{db: db},
 	}, nil
 }
+//------------------------------helper tx manager-------------------------------------------
+
+type txKey struct{}
+
+type queryer interface {
+	QueryRowContext(ctx context.Context,query string, arg ...interface{}) *sql.Row
+	ExecContext(ctx context.Context, query string, arg ...interface{}) (sql.Result,error)
+	QueryContext(ctx context.Context, query string, arg ...interface{}) (*sql.Rows, error)
+}
+
+func getDB(ctx context.Context, fallback *sql.DB) queryer {
+	if tx, ok := ctx.Value(txKey{}).(*sql.Tx); ok {
+		return tx
+	}
+	return fallback
+}
+
+

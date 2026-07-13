@@ -43,7 +43,7 @@ func (s *PostgresHistoryEventRepository) Append(
 	if event.Error != "" {
 		errStr = &event.Error
 	}
-	return s.db.QueryRowContext(ctx, `
+	return getDB(ctx, s.db).QueryRowContext(ctx, `
 		INSERT INTO history_event
 			(workflow_execution_id, step_index, step_name, event_type, payload, error)
 		VALUES ($1,$2,$3,$4,$5,$6)
