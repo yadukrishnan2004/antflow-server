@@ -56,7 +56,7 @@ type WorkflowExecution struct {
     ScheduledAt          time.Time
     UpdatedAt            time.Time
     CompletedAt          *time.Time
-    DeadlineAt           *time.Time // NEW — nil = no deadline
+    DeadlineAt           *time.Time 
     CompensationTotal    int
     CompensationDone     int
 }
@@ -68,17 +68,17 @@ type Task struct {
 	StepName            string
 	TaskQueue           string
 	Input               []byte
-	Output              []byte // transient; only set while CompleteTask processes the result
+	Output              []byte 
 	State               State
 	Error               string
 	ScheduledAt         time.Time
 	StartedAt           time.Time
 	CompletedAt         time.Time
 	LockedUntil         time.Time
-	Attempt             int // number of times this task has been attempted; starts at 0
+	Attempt             int 
 	MaxAttempts         int
+	TimeoutSeconds      int 
 }
-
 
 type HistoryEvent struct {
 	ID                  int64

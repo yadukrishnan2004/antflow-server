@@ -31,8 +31,9 @@ func (s *PostgresTaskRepository) Migrate() error {
 			completed_at TIMESTAMPTZ,
 			locked_until TIMESTAMPTZ,
 
-			attempt      INTEGER NOT NULL DEFAULT 0,
-			max_attempts INTEGER NOT NULL DEFAULT 3,
+   	attempt      INTEGER NOT NULL DEFAULT 0,
+   	max_attempts INTEGER NOT NULL DEFAULT 3,
+   	timeout_seconds INTEGER NOT NULL DEFAULT 300,
 
 			CONSTRAINT fk_task_workflow_execution
 				FOREIGN KEY (workflow_execution_id)
@@ -66,24 +67,17 @@ func (s *PostgresTaskRepository) Migrate() error {
 }
 
 func (s *PostgresTaskRepository) Create(ctx context.Context, task *workflow.Task) error {
-	_, err := getDB(ctx, s.db).ExecContext(ctx, `
-		INSERT INTO task
-			(id, workflow_execution_id, step_index, step_name, task_queue,
-			 input, state, scheduled_at, attempt, max_attempts)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-	`,
-		task.ID,
-		task.WorkflowExecutionID,
-		task.StepIndex,
-		task.StepName,
-		task.TaskQueue,
-		task.Input,
-		string(task.State),
-		task.ScheduledAt,
-		task.Attempt,
-		task.MaxAttempts,
-	)
-	return err
+    _, err := getDB(ctx, s.db).ExecContext(ctx, `
+        INSERT INTO task
+            (id, workflow_execution_id, step_index, step_name, task_queue,
+             input, state, scheduled_at, attempt, max_attempts, timeout_seconds) -- Add timeout_seconds
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    `,
+        task.ID, task.WorkflowExecutionID, task.StepIndex, task.StepName, task.TaskQueue,
+        task.Input, string(task.State), task.ScheduledAt, task.Attempt, task.MaxAttempts,
+        task.TimeoutSeconds,
+    )
+    return err
 }
 
 func (s *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*workflow.Task, error) {
@@ -95,14 +89,14 @@ func (s *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*workf
 		SELECT id, workflow_execution_id, step_index, step_name, task_queue,
 		       input, output, state, COALESCE(error,''),
 		       scheduled_at, started_at, completed_at, locked_until,
-		       attempt, max_attempts
+		       attempt, max_attempts, timeout_seconds
 		FROM   task
 		WHERE  id = $1
 	`, id).Scan(
 		&task.ID, &task.WorkflowExecutionID, &task.StepIndex, &task.StepName, &task.TaskQueue,
 		&task.Input, &task.Output, &stateStr, &task.Error,
 		&task.ScheduledAt, &startedAt, &completedAt, &lockedUntil,
-		&task.Attempt, &task.MaxAttempts,
+		&task.Attempt, &task.MaxAttempts, &task.TimeoutSeconds,
 	)
 	if err == sql.ErrNoRows {
 		return nil, workflow.ErrNotFound
@@ -152,7 +146,7 @@ func (s *PostgresTaskRepository) FindAndLockPending(
 	// so concurrent pollers never block each other.
 	row := tx.QueryRowContext(ctx, `
 		SELECT id, workflow_execution_id, step_index, step_name,
-		       task_queue, input, state, attempt, max_attempts, scheduled_at
+		       task_queue, input, state, attempt, max_attempts, scheduled_at, timeout_seconds
 		FROM   task
 		WHERE  (
 			(state = 'CREATED' AND task_queue = $1 AND scheduled_at <= NOW())
@@ -169,7 +163,7 @@ func (s *PostgresTaskRepository) FindAndLockPending(
 	err = row.Scan(
 		&t.ID, &t.WorkflowExecutionID, &t.StepIndex, &t.StepName,
 		&t.TaskQueue, &t.Input, &stateStr, &t.Attempt, &t.MaxAttempts,
-		&t.ScheduledAt,
+		&t.ScheduledAt,&t.TimeoutSeconds,
 	)
 	if err == sql.ErrNoRows {
 		// No work available; rollback is a no-op here.
@@ -179,7 +173,7 @@ func (s *PostgresTaskRepository) FindAndLockPending(
 		return nil, err
 	}
 
-	lockedUntil := time.Now().Add(5 * time.Minute)
+	lockedUntil := time.Now().Add(time.Duration(t.TimeoutSeconds) * time.Second)
 	_, err = tx.ExecContext(ctx, `
 		UPDATE task
 		SET    state        = 'RUNNING',
@@ -261,12 +255,12 @@ func (s *PostgresTaskRepository) ResetTimedOutTasks() error {
 }
 
 func (s *PostgresTaskRepository) HasActiveTasks(ctx context.Context, executionID string) (bool, error) {
-    var count int
-    err := s.db.QueryRowContext(ctx, `
+	var count int
+	err := s.db.QueryRowContext(ctx, `
         SELECT COUNT(*) FROM task 
         WHERE workflow_execution_id = $1 AND state IN ('CREATED', 'SCHEDULED', 'RUNNING')
     `, executionID).Scan(&count)
-    return count > 0, err
+	return count > 0, err
 }
 
 var _ workflow.TaskRepository = (*PostgresTaskRepository)(nil)

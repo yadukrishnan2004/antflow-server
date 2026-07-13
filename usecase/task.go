@@ -66,6 +66,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 					Attempt:             t.Attempt,
 					MaxAttempts:         t.MaxAttempts,
 					ScheduledAt:         time.Now().Add(time.Duration(t.Attempt*t.Attempt) * 5 * time.Second),
+					TimeoutSeconds:      t.TimeoutSeconds, 
 				}
 				if err := i.taskRepo.Create(txCtx, retryTask); err != nil {
 					return fmt.Errorf("failed to create retry task: %w", err)
@@ -259,7 +260,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			resolvedQueue = exec.TaskQueue
 		}
 
-		nextTask := &workflow.Task{
+				nextTask := &workflow.Task{
 			ID:                  uuid.New().String(),
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           nextIndex,
@@ -270,6 +271,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			Attempt:             0,
 			MaxAttempts:         3,
 			ScheduledAt:         time.Now(),
+			TimeoutSeconds:      nextStep.TimeoutSeconds, 
 		}
 		if err := i.taskRepo.Create(txCtx, nextTask); err != nil {
 			return fmt.Errorf("failed to save next task: %w", err)

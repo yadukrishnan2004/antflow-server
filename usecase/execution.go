@@ -140,22 +140,23 @@ func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID stri
 
 
 func buildTask(exec *workflow.WorkflowExecution, step *workflow.WorkflowDefinitionStep, input []byte, defaultQueue string) *workflow.Task {
-	q := step.TaskQueue
-	if q == "" {
-		q = defaultQueue
-	}
-	return &workflow.Task{
-		ID:                  uuid.New().String(),
-		WorkflowExecutionID: exec.ID,
-		StepIndex:           step.StepIndex,
-		StepName:            step.StepName,
-		TaskQueue:           q,
-		Input:               input,
-		State:               workflow.StateCreated,
-		Attempt:             0,
-		MaxAttempts:         3,
-		ScheduledAt:         time.Now(),
-	}
+    q := step.TaskQueue
+    if q == "" {
+        q = defaultQueue
+    }
+    return &workflow.Task{
+        ID:                  uuid.New().String(),
+        WorkflowExecutionID: exec.ID,
+        StepIndex:           step.StepIndex,
+        StepName:            step.StepName,
+        TaskQueue:           q,
+        Input:               input,
+        State:               workflow.StateCreated,
+        Attempt:             0,
+        MaxAttempts:         3,
+        ScheduledAt:         time.Now(),
+        TimeoutSeconds:      step.TimeoutSeconds,
+    }
 }
 
 func (i *workflowInteractor) GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.WorkflowExecution, error) {
