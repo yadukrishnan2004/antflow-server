@@ -37,18 +37,10 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 
 		nextVersion := 1
 
+		// 1. Retrieve the currently active version of this workflow
 		existingDef, err := w.workflowDefRepo.GetByName(txCtx, ns.ID, name)
 		if err == nil && existingDef != nil {
-			existingSteps, err := w.workflowStepRepo.GetStepsByDefinitionID(txCtx, existingDef.ID)
-			if err != nil {
-				return fmt.Errorf("failed to load existing steps: %w", err)
-			}
-
-			if stepListsEqual(existingSteps, stepNames, compensationStepNames) {
-				wf = existingDef
-				return nil
-			}
-
+			// Always deactivate the previous version
 			if err := w.workflowDefRepo.Deactivate(txCtx, existingDef.ID); err != nil {
 				return fmt.Errorf("failed to deactivate previous definition: %w", err)
 			}
@@ -57,6 +49,7 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 			return fmt.Errorf("failed to check existing workflow definition: %w", err)
 		}
 
+		// 2. Prepare the new workflow version definition
 		wf = &workflow.WorkflowDefinition{
 			ID:                    uuid.New().String(),
 			NamespaceID:           ns.ID,
@@ -73,6 +66,7 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 			return fmt.Errorf("failed to create workflow: %w", err)
 		}
 
+		// 3. Create the definition steps
 		for idx, stepName := range stepNames {
 			var compName string
 			if idx < len(compensationStepNames) {
@@ -96,24 +90,4 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 		return nil, err
 	}
 	return wf, nil
-}
-
-
-func stepListsEqual(existing []workflow.WorkflowDefinitionStep, requestedSteps []string, requestedCompensations []string) bool {
-	if len(existing) != len(requestedSteps) {
-		return false
-	}
-	for i, step := range existing {
-		if step.StepName != requestedSteps[i] {
-			return false
-		}
-		var reqComp string
-		if i < len(requestedCompensations) {
-			reqComp = requestedCompensations[i]
-		}
-		if step.CompensationStepName != reqComp {
-			return false
-		}
-	}
-	return true
 }
