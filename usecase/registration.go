@@ -12,6 +12,10 @@ import (
 
 func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string, defaultTimeoutSeconds int) (*workflow.WorkflowDefinition, error){
 
+	if len(stepNames) == 0 {
+		return nil, fmt.Errorf("invalid workflow definition: must contain at least one step")
+	}
+
 	var wf *workflow.WorkflowDefinition
 
 	err := w.txManager.RunInTx(ctx, func(txCtx context.Context) error {

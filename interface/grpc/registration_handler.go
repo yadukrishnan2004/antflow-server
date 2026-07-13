@@ -14,6 +14,9 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
 	if req.Namespace == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow name is required")
 	}
+	if len(req.Steps) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "workflow must have at least one step")
+	}
 
 	wf, err := h.service.RegisterWorkflow(ctx, req.Namespace, req.WorkflowType, req.Steps, req.CompensationSteps, int(req.DefaultTimeoutSeconds))
 	if err != nil {
