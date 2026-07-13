@@ -8,22 +8,6 @@ import (
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
 
-// Migrate creates the task table.
-//
-// Changes vs old schema:
-//   - attempt DEFAULT changed from 1 → 0. A task starts with 0 attempts;
-//     each time it is picked up by FindAndLockPending the attempt counter is
-//     incremented, so after first pickup attempt = 1, which correctly reflects
-//     "this is the first attempt". The old default of 1 caused the counter to
-//     be 2 on the first real execution.
-//   - CountCompleted and GetAllOutputs are GONE from this repo. Completed task
-//     rows are deleted immediately, so counting them here would race. The
-//     usecase now uses IncrementCompletedSteps on the execution row and reads
-//     outputs from history_event instead.
-//   - chk_task_state now allows 'CANCELLED'. CancelWorkflow marks pending and
-//     in-flight task rows CANCELLED rather than deleting them, so a worker
-//     that completes a task after its workflow was cancelled can be detected
-//     and turned into a no-op instead of corrupting already-terminal state.
 func (s *PostgresTaskRepository) Migrate() error {
 	_, err := s.db.Exec(`
 		CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -107,7 +91,7 @@ func (s *PostgresTaskRepository) GetByID(ctx context.Context, id string) (*workf
 	var stateStr string
 	var startedAt, completedAt, lockedUntil sql.NullTime
 
-	err := s.db.QueryRowContext(ctx, `
+	err := getDB(ctx, s.db).QueryRowContext(ctx, `
 		SELECT id, workflow_execution_id, step_index, step_name, task_queue,
 		       input, output, state, COALESCE(error,''),
 		       scheduled_at, started_at, completed_at, locked_until,
@@ -227,7 +211,7 @@ func (s *PostgresTaskRepository) UpdateCompleted(
 	if errMsg != "" {
 		state = workflow.StateFailed
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := getDB(ctx, s.db).ExecContext(ctx,
 		`UPDATE task SET state=$1, output=$2, error=$3, completed_at=NOW() WHERE id=$4`,
 		string(state), output, errMsg, id,
 	)
@@ -235,7 +219,7 @@ func (s *PostgresTaskRepository) UpdateCompleted(
 }
 
 func (s *PostgresTaskRepository) Delete(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM task WHERE id = $1`, id)
+	_, err := getDB(ctx, s.db).ExecContext(ctx, `DELETE FROM task WHERE id = $1`, id)
 	return err
 }
 

@@ -56,7 +56,7 @@ func (s *PostgresCompensationTaskRepository) Migrate() error {
 }
 
 func (s *PostgresCompensationTaskRepository) Create(ctx context.Context, task *workflow.CompensationTask) error {
-	_, err := s.db.ExecContext(ctx, `
+	_, err := getDB(ctx, s.db).ExecContext(ctx, `
 		INSERT INTO compensation_task
 			(id, workflow_execution_id, step_index, step_name, compensation_step_name, task_queue,
 			 input, state, scheduled_at, attempt, max_attempts)
@@ -82,7 +82,7 @@ func (s *PostgresCompensationTaskRepository) GetByID(ctx context.Context, id str
 	var stateStr string
 	var startedAt, completedAt, lockedUntil sql.NullTime
 
-	err := s.db.QueryRowContext(ctx, `
+	err := getDB(ctx, s.db).QueryRowContext(ctx, `
 		SELECT id, workflow_execution_id, step_index, step_name, compensation_step_name, task_queue,
 		       input, output, state, COALESCE(error,''),
 		       scheduled_at, started_at, completed_at, locked_until,
@@ -184,7 +184,7 @@ func (s *PostgresCompensationTaskRepository) UpdateCompleted(
 	if errMsg != "" {
 		state = workflow.StateFailed
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err := getDB(ctx, s.db).ExecContext(ctx,
 		`UPDATE compensation_task SET state=$1, output=$2, error=$3, completed_at=NOW() WHERE id=$4`,
 		string(state), output, errMsg, id,
 	)
@@ -192,7 +192,7 @@ func (s *PostgresCompensationTaskRepository) UpdateCompleted(
 }
 
 func (s *PostgresCompensationTaskRepository) Delete(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM compensation_task WHERE id = $1`, id)
+	_, err := getDB(ctx, s.db).ExecContext(ctx, `DELETE FROM compensation_task WHERE id = $1`, id)
 	return err
 }
 

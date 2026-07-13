@@ -147,219 +147,225 @@ func (i *workflowInteractor) CompleteCompensationTask(
 	result []byte,
 	errString string,
 ) error {
-	if err := i.compensationTaskRepo.UpdateCompleted(ctx, taskID, result, errString); err != nil {
-		return fmt.Errorf("failed to complete task: %w", err)
-	}
+	var notifyQueue string
 
-	t, err := i.compensationTaskRepo.GetByID(ctx, taskID)
-	if err != nil {
-		return fmt.Errorf("failed to find compensation task: %w", err)
-	}
+	err := i.txManager.RunInTx(ctx, func(txCtx context.Context) error {
+		if err := i.compensationTaskRepo.UpdateCompleted(txCtx, taskID, result, errString); err != nil {
+			return fmt.Errorf("failed to complete task: %w", err)
+		}
 
-	exec, err := i.executionRepo.GetByID(ctx, t.WorkflowExecutionID)
-	if err != nil {
-		return fmt.Errorf("failed to find execution: %w", err)
-	}
+		t, err := i.compensationTaskRepo.GetByID(txCtx, taskID)
+		if err != nil {
+			return fmt.Errorf("failed to find compensation task: %w", err)
+		}
 
-	if workflow.IsTerminal(exec.State) {
-		log.Printf("info: ignoring CompleteCompensationTask: execution %s already terminal (%s)", exec.ID, exec.State)
-		return nil
-	}
+		exec, err := i.executionRepo.GetByID(txCtx, t.WorkflowExecutionID)
+		if err != nil {
+			return fmt.Errorf("failed to find execution: %w", err)
+		}
 
-	// ── Compensation task FAILED ──────────────────────────────────────────
-	if errString != "" {
-		if t.Attempt < t.MaxAttempts {
-			// Delete the failed row and re-create with the same step_index
-			// so the unique constraint (workflow_execution_id, step_index)
-			// doesn't block the insert.
-			_ = i.compensationTaskRepo.Delete(ctx, t.ID)
-			retryTask := &workflow.CompensationTask{
-				ID:                   uuid.New().String(),
-				WorkflowExecutionID:  exec.ID,
-				StepIndex:            t.StepIndex,
-				StepName:             t.StepName,
-				CompensationStepName: t.CompensationStepName,
-				TaskQueue:            t.TaskQueue,
-				Input:                t.Input,
-				State:                workflow.StateCreated,
-				Attempt:              t.Attempt,
-				MaxAttempts:          t.MaxAttempts,
-				ScheduledAt:          time.Now().Add(time.Duration(t.Attempt*t.Attempt) * 5 * time.Second),
-			}
-			if err := i.compensationTaskRepo.Create(ctx, retryTask); err != nil {
-				return fmt.Errorf("failed to create retry compensation task: %w", err)
-			}
-			log.Printf("info: retrying compensation task stepIndex=%d attempt=%d/%d",
-				t.StepIndex, t.Attempt, t.MaxAttempts)
-			i.broker.Notify(t.TaskQueue)
+		if workflow.IsTerminal(exec.State) {
+			log.Printf("info: ignoring CompleteCompensationTask: execution %s already terminal (%s)", exec.ID, exec.State)
 			return nil
 		}
 
-		// Permanent failure — the saga rollback itself failed.
-		log.Printf("error: compensation task permanently failed stepIndex=%d err=%s", t.StepIndex, errString)
+		// ── Compensation task FAILED ──────────────────────────────────────────
+		if errString != "" {
+			if t.Attempt < t.MaxAttempts {
+				// Delete the failed row and re-create with the same step_index
+				_ = i.compensationTaskRepo.Delete(txCtx, t.ID)
+				retryTask := &workflow.CompensationTask{
+					ID:                   uuid.New().String(),
+					WorkflowExecutionID:  exec.ID,
+					StepIndex:            t.StepIndex,
+					StepName:             t.StepName,
+					CompensationStepName: t.CompensationStepName,
+					TaskQueue:            t.TaskQueue,
+					Input:                t.Input,
+					State:                workflow.StateCreated,
+					Attempt:              t.Attempt,
+					MaxAttempts:          t.MaxAttempts,
+					ScheduledAt:          time.Now().Add(time.Duration(t.Attempt*t.Attempt) * 5 * time.Second),
+				}
+				if err := i.compensationTaskRepo.Create(txCtx, retryTask); err != nil {
+					return fmt.Errorf("failed to create retry compensation task: %w", err)
+				}
+				log.Printf("info: retrying compensation task stepIndex=%d attempt=%d/%d",
+					t.StepIndex, t.Attempt, t.MaxAttempts)
+				
+				// Queue broker notification for after transaction commits
+				notifyQueue = t.TaskQueue
+				return nil
+			}
 
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
+			// Permanent failure — the saga rollback itself failed.
+			log.Printf("error: compensation task permanently failed stepIndex=%d err=%s", t.StepIndex, errString)
+
+			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				StepIndex:           &t.StepIndex,
+				StepName:            &t.StepName,
+				EventType:           workflow.EventCompensationFailed,
+				Error:               errString,
+				CreatedAt:           time.Now(),
+			})
+			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				EventType:           workflow.EventSagaRollbackFailed,
+				Error:               errString,
+				CreatedAt:           time.Now(),
+			})
+			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				EventType:           workflow.EventWorkflowFailed,
+				Error:               fmt.Sprintf("Saga rollback failed at step %s: %s", t.StepName, errString),
+				CreatedAt:           time.Now(),
+			})
+			_ = i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed)
+			_ = i.compensationTaskRepo.Delete(txCtx, t.ID)
+			i.signals.Drain(exec.ID)
+			return nil
+		}
+
+		// ── Compensation task SUCCEEDED ───────────────────────────────────────
+		log.Printf("info: compensation task succeeded stepIndex=%d stepName=%s", t.StepIndex, t.StepName)
+
+		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
-			EventType:           workflow.EventCompensationFailed,
-			Error:               errString,
+			EventType:           workflow.EventCompensationCompleted,
+			Payload:             result,
 			CreatedAt:           time.Now(),
 		})
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
+
+		newDone, err := i.executionRepo.IncrementCompensationDone(txCtx, exec.ID)
+		if err != nil {
+			return fmt.Errorf("failed to increment compensation done: %w", err)
+		}
+
+		_ = i.compensationTaskRepo.Delete(txCtx, t.ID)
+
+		// Re-fetch the execution so compensation_total is authoritative
+		freshExec, err := i.executionRepo.GetByID(txCtx, exec.ID)
+		if err != nil {
+			return fmt.Errorf("failed to re-fetch execution after compensation done: %w", err)
+		}
+
+		log.Printf("info: compensation progress done=%d total=%d", newDone, freshExec.CompensationTotal)
+
+		if newDone >= freshExec.CompensationTotal {
+			if err := i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed); err != nil {
+				return err
+			}
+			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				EventType:           workflow.EventSagaRolledBack,
+				CreatedAt:           time.Now(),
+			})
+			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				EventType:           workflow.EventWorkflowFailed,
+				Error:               "Saga rolled back successfully",
+				CreatedAt:           time.Now(),
+			})
+			log.Printf("info: saga rollback complete for exec=%s", exec.ID)
+			i.signals.Drain(exec.ID)
+			return nil
+		}
+
+		// ── Schedule the NEXT compensation task ───────────────────────────────
+		stepsToCompensate, err := i.workflowStepRepo.GetCompensationSteps(
+			txCtx, freshExec.WorkflowDefinitionID, t.StepIndex-1,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to get next compensation steps: %w", err)
+		}
+
+		stepOutputs, err := i.historyRepo.GetStepOutputs(txCtx, exec.ID)
+		if err != nil {
+			return fmt.Errorf("failed to get completed step outputs: %w", err)
+		}
+
+		outputByStep := map[int][]byte{}
+		for _, o := range stepOutputs {
+			outputByStep[o.StepIndex] = o.Output
+		}
+
+		var nextComp *workflow.WorkflowDefinitionStep
+		for idx := range stepsToCompensate {
+			step := &stepsToCompensate[idx]
+			if _, ok := outputByStep[step.StepIndex]; ok {
+				nextComp = step
+				break
+			}
+		}
+
+		if nextComp == nil {
+			if err := i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed); err != nil {
+				return err
+			}
+			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				EventType:           workflow.EventSagaRolledBack,
+				CreatedAt:           time.Now(),
+			})
+			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+				WorkflowExecutionID: exec.ID,
+				EventType:           workflow.EventWorkflowFailed,
+				Error:               "Saga rolled back successfully",
+				CreatedAt:           time.Now(),
+			})
+			log.Printf("info: saga rollback complete (no more steps) for exec=%s", exec.ID)
+			i.signals.Drain(exec.ID)
+			return nil
+		}
+
+		q := nextComp.TaskQueue
+		if q == "" {
+			q = freshExec.TaskQueue
+		}
+		ct := &workflow.CompensationTask{
+			ID:                   uuid.New().String(),
+			WorkflowExecutionID:  exec.ID,
+			StepIndex:            nextComp.StepIndex,
+			StepName:             nextComp.StepName,
+			CompensationStepName: nextComp.CompensationStepName,
+			TaskQueue:            q,
+			Input:                outputByStep[nextComp.StepIndex],
+			State:                workflow.StateCreated,
+			MaxAttempts:          3,
+			ScheduledAt:          time.Now(),
+		}
+
+		if err := i.compensationTaskRepo.Create(txCtx, ct); err != nil {
+			return fmt.Errorf("failed to schedule next compensation task: %w", err)
+		}
+
+		log.Printf("info: scheduled next compensation task id=%s stepIndex=%d stepName=%s compensationStep=%s",
+			ct.ID, ct.StepIndex, ct.StepName, ct.CompensationStepName)
+
+		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
-			EventType:           workflow.EventSagaRollbackFailed,
-			Error:               errString,
+			StepIndex:           &ct.StepIndex,
+			StepName:            &ct.StepName,
+			EventType:           workflow.EventStepScheduled,
 			CreatedAt:           time.Now(),
 		})
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
-			WorkflowExecutionID: exec.ID,
-			EventType:           workflow.EventWorkflowFailed,
-			Error:               fmt.Sprintf("Saga rollback failed at step %s: %s", t.StepName, errString),
-			CreatedAt:           time.Now(),
-		})
-		_ = i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed)
-		_ = i.compensationTaskRepo.Delete(ctx, t.ID)
-		i.signals.Drain(exec.ID)
+
+		// Queue broker notification for after transaction commits
+		notifyQueue = q
 		return nil
-	}
-
-	// ── Compensation task SUCCEEDED ───────────────────────────────────────
-	log.Printf("info: compensation task succeeded stepIndex=%d stepName=%s", t.StepIndex, t.StepName)
-
-	_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
-		WorkflowExecutionID: exec.ID,
-		StepIndex:           &t.StepIndex,
-		StepName:            &t.StepName,
-		EventType:           workflow.EventCompensationCompleted,
-		Payload:             result,
-		CreatedAt:           time.Now(),
 	})
 
-	newDone, err := i.executionRepo.IncrementCompensationDone(ctx, exec.ID)
 	if err != nil {
-		return fmt.Errorf("failed to increment compensation done: %w", err)
+		return err
 	}
 
-	_ = i.compensationTaskRepo.Delete(ctx, t.ID)
-
-	// Re-fetch the execution so compensation_total is authoritative — the
-	// value in the local `exec` variable was read before any concurrent
-	// writes to that column could have settled.
-	freshExec, err := i.executionRepo.GetByID(ctx, exec.ID)
-	if err != nil {
-		return fmt.Errorf("failed to re-fetch execution after compensation done: %w", err)
+	// Trigger notification safely outside the transaction boundary
+	if notifyQueue != "" {
+		i.broker.Notify(notifyQueue)
 	}
 
-	log.Printf("info: compensation progress done=%d total=%d", newDone, freshExec.CompensationTotal)
-
-	if newDone >= freshExec.CompensationTotal {
-		// All compensation tasks finished — saga rollback is complete.
-		// The overall workflow still ends as FAILED (the original step did
-		// fail); we just rolled back cleanly.
-		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed); err != nil {
-			return err
-		}
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
-			WorkflowExecutionID: exec.ID,
-			EventType:           workflow.EventSagaRolledBack,
-			CreatedAt:           time.Now(),
-		})
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
-			WorkflowExecutionID: exec.ID,
-			EventType:           workflow.EventWorkflowFailed,
-			Error:               "Saga rolled back successfully",
-			CreatedAt:           time.Now(),
-		})
-		log.Printf("info: saga rollback complete for exec=%s", exec.ID)
-		i.signals.Drain(exec.ID)
-		return nil
-	}
-
-	// ── Schedule the NEXT compensation task ───────────────────────────────
-	// Walk backwards: find the highest step_index below t.StepIndex that
-	// has a compensation handler AND a recorded output (i.e. it succeeded).
-	stepsToCompensate, err := i.workflowStepRepo.GetCompensationSteps(
-		ctx, freshExec.WorkflowDefinitionID, t.StepIndex-1,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to get next compensation steps: %w", err)
-	}
-
-	stepOutputs, err := i.historyRepo.GetStepOutputs(ctx, exec.ID)
-	if err != nil {
-		return fmt.Errorf("failed to get completed step outputs: %w", err)
-	}
-
-	outputByStep := map[int][]byte{}
-	for _, o := range stepOutputs {
-		outputByStep[o.StepIndex] = o.Output
-	}
-
-	// stepsToCompensate is ordered DESC by step_index, so the first match
-	// is the next step to roll back.
-	var nextComp *workflow.WorkflowDefinitionStep
-	for idx := range stepsToCompensate {
-		step := &stepsToCompensate[idx] // take address of slice element, not loop copy
-		if _, ok := outputByStep[step.StepIndex]; ok {
-			nextComp = step
-			break
-		}
-	}
-
-	if nextComp == nil {
-		// No more steps need rolling back — we're done.
-		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed); err != nil {
-			return err
-		}
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
-			WorkflowExecutionID: exec.ID,
-			EventType:           workflow.EventSagaRolledBack,
-			CreatedAt:           time.Now(),
-		})
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
-			WorkflowExecutionID: exec.ID,
-			EventType:           workflow.EventWorkflowFailed,
-			Error:               "Saga rolled back successfully",
-			CreatedAt:           time.Now(),
-		})
-		log.Printf("info: saga rollback complete (no more steps) for exec=%s", exec.ID)
-		i.signals.Drain(exec.ID)
-		return nil
-	}
-
-	q := nextComp.TaskQueue
-	if q == "" {
-		q = freshExec.TaskQueue
-	}
-	ct := &workflow.CompensationTask{
-		ID:                   uuid.New().String(),
-		WorkflowExecutionID:  exec.ID,
-		StepIndex:            nextComp.StepIndex,
-		StepName:             nextComp.StepName,
-		CompensationStepName: nextComp.CompensationStepName,
-		TaskQueue:            q,
-		Input:                outputByStep[nextComp.StepIndex],
-		State:                workflow.StateCreated,
-		MaxAttempts:          3,
-		ScheduledAt:          time.Now(),
-	}
-
-	if err := i.compensationTaskRepo.Create(ctx, ct); err != nil {
-		return fmt.Errorf("failed to schedule next compensation task: %w", err)
-	}
-
-	log.Printf("info: scheduled next compensation task id=%s stepIndex=%d stepName=%s compensationStep=%s",
-		ct.ID, ct.StepIndex, ct.StepName, ct.CompensationStepName)
-
-	_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
-		WorkflowExecutionID: exec.ID,
-		StepIndex:           &ct.StepIndex,
-		StepName:            &ct.StepName,
-		EventType:           workflow.EventStepScheduled,
-		CreatedAt:           time.Now(),
-	})
-
-	i.broker.Notify(q)
 	return nil
 }
