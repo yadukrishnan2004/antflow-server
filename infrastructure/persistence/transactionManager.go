@@ -19,6 +19,7 @@ func (tm *PostgresTransactionManager) RunInTx(ctx context.Context, fn func(ctx c
 
 	txCtx :=context.WithValue(ctx,txKey{}, tx)
 	if err := fn(txCtx);err!= nil {
+		_ = tx.Rollback()
 		return err
 	}
 	return tx.Commit()
