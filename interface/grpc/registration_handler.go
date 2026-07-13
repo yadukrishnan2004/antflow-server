@@ -17,6 +17,12 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
 	if len(req.Steps) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "workflow must have at least one step")
 	}
+	// Validate WorkflowType early at request parsing stage
+	if req.WorkflowType != "CHAIN" && 
+	   req.WorkflowType != "INDEPENDENT" && 
+	   req.WorkflowType != "SAGA" {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid workflow type %q: must be CHAIN, INDEPENDENT, or SAGA", req.WorkflowType)
+	}
 
 	wf, err := h.service.RegisterWorkflow(ctx, req.Namespace, req.WorkflowType, req.Steps, req.CompensationSteps, int(req.DefaultTimeoutSeconds))
 	if err != nil {

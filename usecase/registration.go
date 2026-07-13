@@ -12,6 +12,14 @@ import (
 
 func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string, defaultTimeoutSeconds int) (*workflow.WorkflowDefinition, error){
 
+	// Business validation: Ensure only supported workflow types are processed
+	wType := workflow.WorkflowType(workflowType)
+	if wType != workflow.ChainWorkflow && 
+	   wType != workflow.IndependentWorkflow && 
+	   wType != workflow.SagaWorkflow {
+		return nil, fmt.Errorf("invalid workflow type %q: must be CHAIN, INDEPENDENT, or SAGA", workflowType)
+	}
+
 	if len(stepNames) == 0 {
 		return nil, fmt.Errorf("invalid workflow definition: must contain at least one step")
 	}
