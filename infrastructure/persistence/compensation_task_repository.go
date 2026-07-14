@@ -251,4 +251,20 @@ func (s *PostgresCompensationTaskRepository) CancelByExecution(ctx context.Conte
 	return err
 }
 
+func (s *PostgresCompensationTaskRepository) RenewLock(ctx context.Context, taskID string) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE compensation_task
+		SET    locked_until = NOW() + INTERVAL '5 minutes'
+		WHERE  id = $1 AND state = 'RUNNING'
+	`, taskID)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return workflow.ErrNotFound
+	}
+	return nil
+}
+
 var _ workflow.CompensationTaskRepository = (*PostgresCompensationTaskRepository)(nil)

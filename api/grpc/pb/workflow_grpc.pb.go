@@ -19,17 +19,19 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	WorkflowService_RegisterWorkflow_FullMethodName         = "/workflow.WorkflowService/RegisterWorkflow"
-	WorkflowService_StartWorkflow_FullMethodName            = "/workflow.WorkflowService/StartWorkflow"
-	WorkflowService_StreamTasks_FullMethodName              = "/workflow.WorkflowService/StreamTasks"
-	WorkflowService_CompleteTask_FullMethodName             = "/workflow.WorkflowService/CompleteTask"
-	WorkflowService_StreamCompensationTasks_FullMethodName  = "/workflow.WorkflowService/StreamCompensationTasks"
-	WorkflowService_CompleteCompensationTask_FullMethodName = "/workflow.WorkflowService/CompleteCompensationTask"
-	WorkflowService_GetWorkflowResult_FullMethodName        = "/workflow.WorkflowService/GetWorkflowResult"
-	WorkflowService_CancelWorkflow_FullMethodName           = "/workflow.WorkflowService/CancelWorkflow"
-	WorkflowService_StreamWorkflowHistory_FullMethodName    = "/workflow.WorkflowService/StreamWorkflowHistory"
-	WorkflowService_SendSignal_FullMethodName               = "/workflow.WorkflowService/SendSignal"
-	WorkflowService_PollSignal_FullMethodName               = "/workflow.WorkflowService/PollSignal"
+	WorkflowService_RegisterWorkflow_FullMethodName          = "/workflow.WorkflowService/RegisterWorkflow"
+	WorkflowService_StartWorkflow_FullMethodName             = "/workflow.WorkflowService/StartWorkflow"
+	WorkflowService_StreamTasks_FullMethodName               = "/workflow.WorkflowService/StreamTasks"
+	WorkflowService_CompleteTask_FullMethodName              = "/workflow.WorkflowService/CompleteTask"
+	WorkflowService_StreamCompensationTasks_FullMethodName   = "/workflow.WorkflowService/StreamCompensationTasks"
+	WorkflowService_CompleteCompensationTask_FullMethodName  = "/workflow.WorkflowService/CompleteCompensationTask"
+	WorkflowService_GetWorkflowResult_FullMethodName         = "/workflow.WorkflowService/GetWorkflowResult"
+	WorkflowService_StreamWorkflowHistory_FullMethodName     = "/workflow.WorkflowService/StreamWorkflowHistory"
+	WorkflowService_CancelWorkflow_FullMethodName            = "/workflow.WorkflowService/CancelWorkflow"
+	WorkflowService_SendSignal_FullMethodName                = "/workflow.WorkflowService/SendSignal"
+	WorkflowService_PollSignal_FullMethodName                = "/workflow.WorkflowService/PollSignal"
+	WorkflowService_HeartbeatTask_FullMethodName             = "/workflow.WorkflowService/HeartbeatTask"
+	WorkflowService_HeartbeatCompensationTask_FullMethodName = "/workflow.WorkflowService/HeartbeatCompensationTask"
 )
 
 // WorkflowServiceClient is the client API for WorkflowService service.
@@ -43,18 +45,12 @@ type WorkflowServiceClient interface {
 	StreamCompensationTasks(ctx context.Context, in *StreamTasksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CompensationTaskResponse], error)
 	CompleteCompensationTask(ctx context.Context, in *CompleteCompensationTaskRequest, opts ...grpc.CallOption) (*CompleteCompensationTaskResponse, error)
 	GetWorkflowResult(ctx context.Context, in *GetWorkflowResultRequest, opts ...grpc.CallOption) (*GetWorkflowResultResponse, error)
-	CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error)
 	StreamWorkflowHistory(ctx context.Context, in *StreamWorkflowHistoryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HistoryEvent], error)
-	// Signal RPCs — pause/resume support.
-	// SendSignal delivers a named payload to a running execution. It returns
-	// immediately; if no step is currently waiting for this signal the payload
-	// is buffered and delivered when WaitForSignal is next called.
+	CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error)
 	SendSignal(ctx context.Context, in *SendSignalRequest, opts ...grpc.CallOption) (*SendSignalResponse, error)
-	// PollSignal is called by a worker step that wants to pause until a named
-	// signal arrives or a timeout elapses. It is a server-streaming RPC that
-	// sends exactly one message (the signal payload) and then closes, or closes
-	// with an error on timeout / cancellation.
 	PollSignal(ctx context.Context, in *PollSignalRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SignalEvent], error)
+	HeartbeatTask(ctx context.Context, in *HeartbeatTaskRequest, opts ...grpc.CallOption) (*HeartbeatTaskResponse, error)
+	HeartbeatCompensationTask(ctx context.Context, in *HeartbeatTaskRequest, opts ...grpc.CallOption) (*HeartbeatTaskResponse, error)
 }
 
 type workflowServiceClient struct {
@@ -153,16 +149,6 @@ func (c *workflowServiceClient) GetWorkflowResult(ctx context.Context, in *GetWo
 	return out, nil
 }
 
-func (c *workflowServiceClient) CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(CancelWorkflowResponse)
-	err := c.cc.Invoke(ctx, WorkflowService_CancelWorkflow_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *workflowServiceClient) StreamWorkflowHistory(ctx context.Context, in *StreamWorkflowHistoryRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HistoryEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &WorkflowService_ServiceDesc.Streams[2], WorkflowService_StreamWorkflowHistory_FullMethodName, cOpts...)
@@ -181,6 +167,16 @@ func (c *workflowServiceClient) StreamWorkflowHistory(ctx context.Context, in *S
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkflowService_StreamWorkflowHistoryClient = grpc.ServerStreamingClient[HistoryEvent]
+
+func (c *workflowServiceClient) CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelWorkflowResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_CancelWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *workflowServiceClient) SendSignal(ctx context.Context, in *SendSignalRequest, opts ...grpc.CallOption) (*SendSignalResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -211,6 +207,26 @@ func (c *workflowServiceClient) PollSignal(ctx context.Context, in *PollSignalRe
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkflowService_PollSignalClient = grpc.ServerStreamingClient[SignalEvent]
 
+func (c *workflowServiceClient) HeartbeatTask(ctx context.Context, in *HeartbeatTaskRequest, opts ...grpc.CallOption) (*HeartbeatTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HeartbeatTaskResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_HeartbeatTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workflowServiceClient) HeartbeatCompensationTask(ctx context.Context, in *HeartbeatTaskRequest, opts ...grpc.CallOption) (*HeartbeatTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HeartbeatTaskResponse)
+	err := c.cc.Invoke(ctx, WorkflowService_HeartbeatCompensationTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkflowServiceServer is the server API for WorkflowService service.
 // All implementations must embed UnimplementedWorkflowServiceServer
 // for forward compatibility.
@@ -222,18 +238,12 @@ type WorkflowServiceServer interface {
 	StreamCompensationTasks(*StreamTasksRequest, grpc.ServerStreamingServer[CompensationTaskResponse]) error
 	CompleteCompensationTask(context.Context, *CompleteCompensationTaskRequest) (*CompleteCompensationTaskResponse, error)
 	GetWorkflowResult(context.Context, *GetWorkflowResultRequest) (*GetWorkflowResultResponse, error)
-	CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error)
 	StreamWorkflowHistory(*StreamWorkflowHistoryRequest, grpc.ServerStreamingServer[HistoryEvent]) error
-	// Signal RPCs — pause/resume support.
-	// SendSignal delivers a named payload to a running execution. It returns
-	// immediately; if no step is currently waiting for this signal the payload
-	// is buffered and delivered when WaitForSignal is next called.
+	CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error)
 	SendSignal(context.Context, *SendSignalRequest) (*SendSignalResponse, error)
-	// PollSignal is called by a worker step that wants to pause until a named
-	// signal arrives or a timeout elapses. It is a server-streaming RPC that
-	// sends exactly one message (the signal payload) and then closes, or closes
-	// with an error on timeout / cancellation.
 	PollSignal(*PollSignalRequest, grpc.ServerStreamingServer[SignalEvent]) error
+	HeartbeatTask(context.Context, *HeartbeatTaskRequest) (*HeartbeatTaskResponse, error)
+	HeartbeatCompensationTask(context.Context, *HeartbeatTaskRequest) (*HeartbeatTaskResponse, error)
 	mustEmbedUnimplementedWorkflowServiceServer()
 }
 
@@ -265,17 +275,23 @@ func (UnimplementedWorkflowServiceServer) CompleteCompensationTask(context.Conte
 func (UnimplementedWorkflowServiceServer) GetWorkflowResult(context.Context, *GetWorkflowResultRequest) (*GetWorkflowResultResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetWorkflowResult not implemented")
 }
-func (UnimplementedWorkflowServiceServer) CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method CancelWorkflow not implemented")
-}
 func (UnimplementedWorkflowServiceServer) StreamWorkflowHistory(*StreamWorkflowHistoryRequest, grpc.ServerStreamingServer[HistoryEvent]) error {
 	return status.Error(codes.Unimplemented, "method StreamWorkflowHistory not implemented")
+}
+func (UnimplementedWorkflowServiceServer) CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelWorkflow not implemented")
 }
 func (UnimplementedWorkflowServiceServer) SendSignal(context.Context, *SendSignalRequest) (*SendSignalResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendSignal not implemented")
 }
 func (UnimplementedWorkflowServiceServer) PollSignal(*PollSignalRequest, grpc.ServerStreamingServer[SignalEvent]) error {
 	return status.Error(codes.Unimplemented, "method PollSignal not implemented")
+}
+func (UnimplementedWorkflowServiceServer) HeartbeatTask(context.Context, *HeartbeatTaskRequest) (*HeartbeatTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method HeartbeatTask not implemented")
+}
+func (UnimplementedWorkflowServiceServer) HeartbeatCompensationTask(context.Context, *HeartbeatTaskRequest) (*HeartbeatTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method HeartbeatCompensationTask not implemented")
 }
 func (UnimplementedWorkflowServiceServer) mustEmbedUnimplementedWorkflowServiceServer() {}
 func (UnimplementedWorkflowServiceServer) testEmbeddedByValue()                         {}
@@ -410,6 +426,17 @@ func _WorkflowService_GetWorkflowResult_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkflowService_StreamWorkflowHistory_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamWorkflowHistoryRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(WorkflowServiceServer).StreamWorkflowHistory(m, &grpc.GenericServerStream[StreamWorkflowHistoryRequest, HistoryEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkflowService_StreamWorkflowHistoryServer = grpc.ServerStreamingServer[HistoryEvent]
+
 func _WorkflowService_CancelWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CancelWorkflowRequest)
 	if err := dec(in); err != nil {
@@ -427,17 +454,6 @@ func _WorkflowService_CancelWorkflow_Handler(srv interface{}, ctx context.Contex
 	}
 	return interceptor(ctx, in, info, handler)
 }
-
-func _WorkflowService_StreamWorkflowHistory_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(StreamWorkflowHistoryRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(WorkflowServiceServer).StreamWorkflowHistory(m, &grpc.GenericServerStream[StreamWorkflowHistoryRequest, HistoryEvent]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type WorkflowService_StreamWorkflowHistoryServer = grpc.ServerStreamingServer[HistoryEvent]
 
 func _WorkflowService_SendSignal_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SendSignalRequest)
@@ -467,6 +483,42 @@ func _WorkflowService_PollSignal_Handler(srv interface{}, stream grpc.ServerStre
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkflowService_PollSignalServer = grpc.ServerStreamingServer[SignalEvent]
+
+func _WorkflowService_HeartbeatTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HeartbeatTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).HeartbeatTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_HeartbeatTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).HeartbeatTask(ctx, req.(*HeartbeatTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkflowService_HeartbeatCompensationTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HeartbeatTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkflowServiceServer).HeartbeatCompensationTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkflowService_HeartbeatCompensationTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkflowServiceServer).HeartbeatCompensationTask(ctx, req.(*HeartbeatTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 // WorkflowService_ServiceDesc is the grpc.ServiceDesc for WorkflowService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -502,6 +554,14 @@ var WorkflowService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendSignal",
 			Handler:    _WorkflowService_SendSignal_Handler,
+		},
+		{
+			MethodName: "HeartbeatTask",
+			Handler:    _WorkflowService_HeartbeatTask_Handler,
+		},
+		{
+			MethodName: "HeartbeatCompensationTask",
+			Handler:    _WorkflowService_HeartbeatCompensationTask_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

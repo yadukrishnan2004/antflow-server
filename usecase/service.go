@@ -34,6 +34,9 @@ type WorkflowService interface {
 	WaitForSignal(ctx context.Context, executionID, name string, timeout time.Duration) ([]byte, error)
 	ExpireOverdueWorkflows(ctx context.Context) error
 	RecoverWorkflows(ctx context.Context) error
+
+	HeartbeatTask(ctx context.Context, taskID string) error
+	HeartbeatCompensationTask(ctx context.Context, taskID string) error
 }
 
 type workflowInteractor struct {
@@ -204,4 +207,13 @@ func (i *workflowInteractor) RecoverWorkflows(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+
+func (i *workflowInteractor) HeartbeatTask(ctx context.Context, taskID string) error {
+	return i.taskRepo.RenewLock(ctx, taskID)
+}
+
+func (i *workflowInteractor) HeartbeatCompensationTask(ctx context.Context, taskID string) error {
+	return i.compensationTaskRepo.RenewLock(ctx, taskID)
 }

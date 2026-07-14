@@ -14,20 +14,23 @@ service WorkflowService {
   rpc StreamCompensationTasks (StreamTasksRequest) returns (stream CompensationTaskResponse);
   rpc CompleteCompensationTask (CompleteCompensationTaskRequest) returns (CompleteCompensationTaskResponse);
   rpc GetWorkflowResult (GetWorkflowResultRequest) returns (GetWorkflowResultResponse);
-  rpc CancelWorkflow (CancelWorkflowRequest) returns (CancelWorkflowResponse);
   rpc StreamWorkflowHistory (StreamWorkflowHistoryRequest) returns (stream HistoryEvent);
+  rpc CancelWorkflow (CancelWorkflowRequest) returns (CancelWorkflowResponse);
 
-  // Signal RPCs — pause/resume support.
-  // SendSignal delivers a named payload to a running execution. It returns
-  // immediately; if no step is currently waiting for this signal the payload
-  // is buffered and delivered when WaitForSignal is next called.
   rpc SendSignal (SendSignalRequest) returns (SendSignalResponse);
-
-  // PollSignal is called by a worker step that wants to pause until a named
-  // signal arrives or a timeout elapses. It is a server-streaming RPC that
-  // sends exactly one message (the signal payload) and then closes, or closes
-  // with an error on timeout / cancellation.
   rpc PollSignal (PollSignalRequest) returns (stream SignalEvent);
+
+  rpc HeartbeatTask (HeartbeatTaskRequest) returns (HeartbeatTaskResponse);
+  rpc HeartbeatCompensationTask (HeartbeatTaskRequest) returns (HeartbeatTaskResponse);
+}
+
+message HeartbeatTaskRequest {
+  string task_id = 1;
+  string worker_id = 2;
+}
+
+message HeartbeatTaskResponse {
+  bool accepted = 1;
 }
 
 message RegisterWorkflowRequest {

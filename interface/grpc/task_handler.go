@@ -132,3 +132,33 @@ func (h *WorkflowHandler) CompleteCompensationTask(ctx context.Context, req *pb.
 
 	return &pb.CompleteCompensationTaskResponse{Success: true}, nil
 }
+
+
+
+func (h *WorkflowHandler) HeartbeatTask(ctx context.Context, req *pb.HeartbeatTaskRequest) (*pb.HeartbeatTaskResponse, error) {
+	if req.TaskId == "" {
+		return nil, status.Error(codes.InvalidArgument, "task id is required")
+	}
+
+	err := h.service.HeartbeatTask(ctx, req.TaskId)
+	if err != nil {
+		// ErrNotFound means the task was cancelled or already expired.
+		// Tell the worker to stop processing immediately.
+		return &pb.HeartbeatTaskResponse{Accepted: false}, nil
+	}
+
+	return &pb.HeartbeatTaskResponse{Accepted: true}, nil
+}
+
+func (h *WorkflowHandler) HeartbeatCompensationTask(ctx context.Context, req *pb.HeartbeatTaskRequest) (*pb.HeartbeatTaskResponse, error) {
+	if req.TaskId == "" {
+		return nil, status.Error(codes.InvalidArgument, "task id is required")
+	}
+
+	err := h.service.HeartbeatCompensationTask(ctx, req.TaskId)
+	if err != nil {
+		return &pb.HeartbeatTaskResponse{Accepted: false}, nil
+	}
+
+	return &pb.HeartbeatTaskResponse{Accepted: true}, nil
+}

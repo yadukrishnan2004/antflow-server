@@ -56,16 +56,6 @@ func main() {
 		log.Printf("warn: startup workflow recovery encountered error: %v", err)
 	}
 
-	// Run periodic background task recovery safety net.
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			if err := storage.Task.ResetTimedOutTasks(); err != nil {
-				log.Printf("error: failed to reset timed out tasks: %v", err)
-			}
-		}
-	}()
 
 	// NEW: Run periodic workflow-deadline enforcement.
 	go func() {

@@ -87,6 +87,7 @@ type TaskRepository interface {
 	// consistent with how workflow_execution rows are never deleted either.
 	CancelByExecution(ctx context.Context, executionID string) error
 	HasActiveTasks(ctx context.Context, executionID string) (bool, error)
+	RenewLock(ctx context.Context, taskID string) error
 }
 
 type HistoryEventRepository interface {
@@ -123,6 +124,8 @@ type CompensationTaskRepository interface {
 	Delete(ctx context.Context, id string) error
 	GetPendingByExecution(ctx context.Context, executionID string) ([]CompensationTask, error)
 	CancelByExecution(ctx context.Context, executionID string) error
+
+	RenewLock(ctx context.Context, taskID string) error
 }
 
 type TransactionManager interface {

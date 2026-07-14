@@ -263,4 +263,21 @@ func (s *PostgresTaskRepository) HasActiveTasks(ctx context.Context, executionID
 	return count > 0, err
 }
 
+
+func (s *PostgresTaskRepository) RenewLock(ctx context.Context, taskID string) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE task
+		SET    locked_until = NOW() + (timeout_seconds || ' seconds')::INTERVAL
+		WHERE  id = $1 AND state = 'RUNNING'
+	`, taskID)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return workflow.ErrNotFound
+	}
+	return nil
+}
+
 var _ workflow.TaskRepository = (*PostgresTaskRepository)(nil)
