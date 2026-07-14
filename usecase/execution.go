@@ -153,7 +153,7 @@ func buildTask(exec *workflow.WorkflowExecution, step *workflow.WorkflowDefiniti
         Input:               input,
         State:               workflow.StateCreated,
         Attempt:             0,
-        MaxAttempts:         3,
+        MaxAttempts:         step.MaxAttempts,
         ScheduledAt:         time.Now(),
         TimeoutSeconds:      step.TimeoutSeconds,
     }

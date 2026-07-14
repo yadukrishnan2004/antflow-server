@@ -29,6 +29,7 @@ type RegisterWorkflowRequest struct {
 	Steps                 []string               `protobuf:"bytes,3,rep,name=steps,proto3" json:"steps,omitempty"`
 	CompensationSteps     []string               `protobuf:"bytes,4,rep,name=compensation_steps,json=compensationSteps,proto3" json:"compensation_steps,omitempty"`
 	DefaultTimeoutSeconds int32                  `protobuf:"varint,5,opt,name=default_timeout_seconds,json=defaultTimeoutSeconds,proto3" json:"default_timeout_seconds,omitempty"`
+	StepMaxAttempts       []int32                `protobuf:"varint,6,rep,packed,name=step_max_attempts,json=stepMaxAttempts,proto3" json:"step_max_attempts,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -96,6 +97,13 @@ func (x *RegisterWorkflowRequest) GetDefaultTimeoutSeconds() int32 {
 		return x.DefaultTimeoutSeconds
 	}
 	return 0
+}
+
+func (x *RegisterWorkflowRequest) GetStepMaxAttempts() []int32 {
+	if x != nil {
+		return x.StepMaxAttempts
+	}
+	return nil
 }
 
 type RegisterWorkflowResponse struct {
@@ -1278,13 +1286,14 @@ var File_api_proto_workflow_proto protoreflect.FileDescriptor
 
 const file_api_proto_workflow_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd9\x01\n" +
+	"\x18api/proto/workflow.proto\x12\bworkflow\x1a\x1fgoogle/protobuf/timestamp.proto\"\x85\x02\n" +
 	"\x17RegisterWorkflowRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12#\n" +
 	"\rworkflow_type\x18\x02 \x01(\tR\fworkflowType\x12\x14\n" +
 	"\x05steps\x18\x03 \x03(\tR\x05steps\x12-\n" +
 	"\x12compensation_steps\x18\x04 \x03(\tR\x11compensationSteps\x126\n" +
-	"\x17default_timeout_seconds\x18\x05 \x01(\x05R\x15defaultTimeoutSeconds\"y\n" +
+	"\x17default_timeout_seconds\x18\x05 \x01(\x05R\x15defaultTimeoutSeconds\x12*\n" +
+	"\x11step_max_attempts\x18\x06 \x03(\x05R\x0fstepMaxAttempts\"y\n" +
 	"\x18RegisterWorkflowResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +

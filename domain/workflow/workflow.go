@@ -33,9 +33,10 @@ type WorkflowDefinitionStep struct {
 	WorkflowDefinitionID string
 	StepIndex            int
 	StepName             string
-	CompensationStepName string // empty = no compensation for this step
+	CompensationStepName string 
 	TimeoutSeconds       int
-	TaskQueue            string // optional per-step override; empty = use execution queue
+	TaskQueue            string 
+	MaxAttempts          int
 }
 
 

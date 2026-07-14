@@ -24,11 +24,25 @@ func (h *WorkflowHandler) RegisterWorkflow(ctx context.Context, req *pb.Register
 		return nil, status.Errorf(codes.InvalidArgument, "invalid workflow type %q: must be CHAIN, INDEPENDENT, or SAGA", req.WorkflowType)
 	}
 
-	wf, err := h.service.RegisterWorkflow(ctx, req.Namespace, req.WorkflowType, req.Steps, req.CompensationSteps, int(req.DefaultTimeoutSeconds))
+		// Convert gRPC []int32 to Go standard []int
+	var stepMaxAttempts []int
+	for _, val := range req.StepMaxAttempts {
+		stepMaxAttempts = append(stepMaxAttempts, int(val))
+	}
+
+	// Pass the new slice as the last argument
+	wf, err := h.service.RegisterWorkflow(
+		ctx, 
+		req.Namespace, 
+		req.WorkflowType, 
+		req.Steps, 
+		req.CompensationSteps, 
+		int(req.DefaultTimeoutSeconds), 
+		stepMaxAttempts,
+	)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to register workflow: %v", err)
 	}
-
 	return &pb.RegisterWorkflowResponse{
 		Id:        wf.ID,
 		Name:      wf.Name,

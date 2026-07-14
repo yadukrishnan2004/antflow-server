@@ -10,7 +10,7 @@ import (
 	"github.com/yadukrishnan2004/antflow-server/domain/workflow"
 )
 
-func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string, defaultTimeoutSeconds int) (*workflow.WorkflowDefinition, error){
+func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string, defaultTimeoutSeconds int, stepMaxAttempts []int) (*workflow.WorkflowDefinition, error){
 
 	// Business validation: Ensure only supported workflow types are processed
 	wType := workflow.WorkflowType(workflowType)
@@ -57,7 +57,7 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 			return fmt.Errorf("failed to check existing workflow definition: %w", err)
 		}
 
-		// 2. Prepare the new workflow version definition
+		// 2. Prepare the new workflow version definition (no MaxAttempts here)
 		wf = &workflow.WorkflowDefinition{
 			ID:                    uuid.New().String(),
 			NamespaceID:           ns.ID,
@@ -74,18 +74,25 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 			return fmt.Errorf("failed to create workflow: %w", err)
 		}
 
-		// 3. Create the definition steps
+		// 3. Create the definition steps (Assign MaxAttempts to each step here)
 		for idx, stepName := range stepNames {
 			var compName string
 			if idx < len(compensationStepNames) {
 				compName = compensationStepNames[idx]
 			}
+			
+			maxAttempts := 3 // default fallback
+			if idx < len(stepMaxAttempts) && stepMaxAttempts[idx] > 0 {
+				maxAttempts = stepMaxAttempts[idx]
+			}
+
 			step := &workflow.WorkflowDefinitionStep{
 				ID:                   uuid.New().String(),
 				WorkflowDefinitionID: wf.ID,
 				StepName:             stepName,
 				CompensationStepName: compName,
 				StepIndex:            idx + 1,
+				MaxAttempts:          maxAttempts,
 			}
 			if err := w.workflowStepRepo.Create(txCtx, step); err != nil {
 				return fmt.Errorf("failed to create workflow steps: %w", err)

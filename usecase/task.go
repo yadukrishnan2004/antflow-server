@@ -269,7 +269,7 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 			Input:               result,
 			State:               workflow.StateCreated,
 			Attempt:             0,
-			MaxAttempts:         3,
+			MaxAttempts:         nextStep.MaxAttempts,
 			ScheduledAt:         time.Now(),
 			TimeoutSeconds:      nextStep.TimeoutSeconds, 
 		}

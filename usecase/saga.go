@@ -118,7 +118,7 @@ func (i *workflowInteractor) startCompensation(
 		TaskQueue:            q,
 		Input:                outputByStep[firstComp.StepIndex],
 		State:                workflow.StateCreated,
-		MaxAttempts:          3,
+		MaxAttempts:          firstComp.MaxAttempts,
 		ScheduledAt:          time.Now(),
 	}
 
@@ -336,7 +336,7 @@ func (i *workflowInteractor) CompleteCompensationTask(
 			TaskQueue:            q,
 			Input:                outputByStep[nextComp.StepIndex],
 			State:                workflow.StateCreated,
-			MaxAttempts:          3,
+			MaxAttempts:          nextComp.MaxAttempts,
 			ScheduledAt:          time.Now(),
 		}
 

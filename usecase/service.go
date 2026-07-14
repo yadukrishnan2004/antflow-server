@@ -10,7 +10,7 @@ import (
 )
 
 type WorkflowService interface {
-	RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string, defaultTimeoutSeconds int) (*workflow.WorkflowDefinition, error)
+	RegisterWorkflow(ctx context.Context, name string, workflowType string, stepNames []string, compensationStepNames []string, defaultTimeoutSeconds int, stepMaxAttempts []int) (*workflow.WorkflowDefinition, error)
 	StartWorkflow(ctx context.Context, workflowName string, taskQueue string, input []byte, timeoutOverrideSeconds int) (*workflow.WorkflowExecution, error)
 	PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error)
 	CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error
@@ -119,10 +119,7 @@ func (i *workflowInteractor) ExpireOverdueWorkflows(ctx context.Context) error {
         }); err != nil {
             log.Printf("warn: failed to append timeout history event for %s: %v", id, err)
         }
-        // Also record the standard WORKFLOW_FAILED event, so anything
-        // consuming history and only checking for EventWorkflowFailed
-        // (e.g. StreamWorkflowHistory's terminal-event detection) still
-        // recognizes the stream should close.
+
         if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
             WorkflowExecutionID: id,
             EventType:           workflow.EventWorkflowFailed,

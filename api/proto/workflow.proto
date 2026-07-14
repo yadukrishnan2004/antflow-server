@@ -35,7 +35,8 @@ message RegisterWorkflowRequest {
   string workflow_type = 2;
   repeated string steps = 3; 
   repeated string compensation_steps = 4;
-  int32 default_timeout_seconds = 5; 
+  int32 default_timeout_seconds = 5;
+  repeated int32 step_max_attempts = 6;  
 }
 
 message RegisterWorkflowResponse {
@@ -156,3 +157,10 @@ message SignalEvent {
   bytes payload = 2;
   bool timed_out = 3;
 }
+
+
+//protoc --go_out=. --go_opt=module=github.com/yadukrishnan2004/antflow-server --go-grpc_out=. --go-grpc_opt=module=github.com/yadukrishnan2004/antflow-server api/proto/workflow.proto
+//protoc \
+//	--go_out=. --go_opt=module=github.com/yadukrishnan2004/antflow-server \
+//	--go-grpc_out=. --go-grpc_opt=module=github.com/yadukrishnan2004/antflow-server \
+//	api/proto/*.proto

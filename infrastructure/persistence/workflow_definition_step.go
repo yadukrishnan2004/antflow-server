@@ -19,6 +19,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) Migrate() error {
 			compensation_step_name TEXT,
 			task_queue             TEXT,
 			timeout_seconds        INTEGER NOT NULL DEFAULT 300,
+			max_attempts           INTEGER NOT NULL DEFAULT 3,
 
 			CONSTRAINT fk_workflow_definition_step_definition
 				FOREIGN KEY (workflow_definition_id)
@@ -39,8 +40,8 @@ func (s *PostgresWorkflowDefinitionStepRepository) Create(
 ) error {
 	return getDB(ctx,s.db).QueryRowContext(ctx, `
 		INSERT INTO workflow_definition_step
-			(workflow_definition_id, step_index, step_name, compensation_step_name, task_queue, timeout_seconds)
-		VALUES ($1, $2, $3, $4, $5, $6)
+			(workflow_definition_id, step_index, step_name, compensation_step_name, task_queue, timeout_seconds,max_attempts)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
 	`,
 		step.WorkflowDefinitionID,
@@ -49,6 +50,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) Create(
 		step.CompensationStepName,
 		step.TaskQueue,
 		step.TimeoutSeconds,
+		step.MaxAttempts,
 	).Scan(&step.ID)
 }
 
@@ -57,7 +59,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
 ) ([]workflow.WorkflowDefinitionStep, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, workflow_definition_id, step_index, step_name,
-		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds
+		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds, max_attempts
 		FROM   workflow_definition_step
 		WHERE  workflow_definition_id = $1
 		ORDER  BY step_index ASC
@@ -72,7 +74,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetStepsByDefinitionID(
 		var s workflow.WorkflowDefinitionStep
 		if err := rows.Scan(
 			&s.ID, &s.WorkflowDefinitionID, &s.StepIndex,
-			&s.StepName, &s.CompensationStepName, &s.TaskQueue, &s.TimeoutSeconds,
+			&s.StepName, &s.CompensationStepName, &s.TaskQueue, &s.TimeoutSeconds, &s.MaxAttempts,
 		); err != nil {
 			return nil, err
 		}
@@ -85,14 +87,15 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetByDefinitionAndIndex(
 	ctx context.Context, definitionID string, stepIndex int,
 ) (*workflow.WorkflowDefinitionStep, error) {
 	step := &workflow.WorkflowDefinitionStep{}
-	err := getDB(ctx,s.db).QueryRowContext(ctx, `
+	err := getDB(ctx, s.db).QueryRowContext(ctx, `
 		SELECT id, workflow_definition_id, step_index, step_name,
-		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds
+		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds, max_attempts
 		FROM   workflow_definition_step
 		WHERE  workflow_definition_id = $1 AND step_index = $2
 	`, definitionID, stepIndex).Scan(
 		&step.ID, &step.WorkflowDefinitionID, &step.StepIndex,
-		&step.StepName, &step.CompensationStepName, &step.TaskQueue, &step.TimeoutSeconds,
+		&step.StepName, &step.CompensationStepName, &step.TaskQueue, &step.TimeoutSeconds, 
+		&step.MaxAttempts,
 	)
 	if err == sql.ErrNoRows {
 		return nil, workflow.ErrNotFound
@@ -108,7 +111,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetCompensationSteps(
 ) ([]workflow.WorkflowDefinitionStep, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, workflow_definition_id, step_index, step_name,
-		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds
+		       COALESCE(compensation_step_name, ''), COALESCE(task_queue, ''), timeout_seconds,  max_attempts
 		FROM   workflow_definition_step
 		WHERE  workflow_definition_id = $1 
 		  AND  step_index <= $2
@@ -126,7 +129,7 @@ func (s *PostgresWorkflowDefinitionStepRepository) GetCompensationSteps(
 		var s workflow.WorkflowDefinitionStep
 		if err := rows.Scan(
 			&s.ID, &s.WorkflowDefinitionID, &s.StepIndex,
-			&s.StepName, &s.CompensationStepName, &s.TaskQueue, &s.TimeoutSeconds,
+			&s.StepName, &s.CompensationStepName, &s.TaskQueue, &s.TimeoutSeconds, &s.MaxAttempts,
 		); err != nil {
 			return nil, err
 		}
