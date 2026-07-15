@@ -15,7 +15,7 @@ type WorkflowService interface {
 	PollTask(ctx context.Context, taskQueue string) (*workflow.Task, error)
 	CompleteTask(ctx context.Context, taskID string, result []byte, errString string) error
 	PollCompensationTask(ctx context.Context, taskQueue string) (*workflow.CompensationTask, error)
-	CompleteCompensationTask(ctx context.Context, taskID string, result []byte, errString string) error
+	CompleteCompensationTask(ctx context.Context, taskID string, result []byte, errString string) (bool, error)
 	GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.WorkflowExecution, error)
 	CancelWorkflow(ctx context.Context, workflowID string) error
 	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)

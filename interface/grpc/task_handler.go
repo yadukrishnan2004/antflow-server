@@ -124,13 +124,11 @@ func (h *WorkflowHandler) CompleteCompensationTask(ctx context.Context, req *pb.
 	if req.TaskId == "" {
 		return nil, status.Error(codes.InvalidArgument, "task id is required")
 	}
-
-	err := h.service.CompleteCompensationTask(ctx, req.TaskId, req.Result, req.Error)
+	success, err := h.service.CompleteCompensationTask(ctx, req.TaskId, req.Result, req.Error)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to complete compensation task: %v", err)
 	}
-
-	return &pb.CompleteCompensationTaskResponse{Success: true}, nil
+	return &pb.CompleteCompensationTaskResponse{Success: success}, nil
 }
 
 

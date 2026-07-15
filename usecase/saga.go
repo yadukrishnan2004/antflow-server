@@ -146,8 +146,9 @@ func (i *workflowInteractor) CompleteCompensationTask(
 	taskID string,
 	result []byte,
 	errString string,
-) error {
+) (bool, error) {
 	var notifyQueue string
+	success := true 
 
 	err := i.txManager.RunInTx(ctx, func(txCtx context.Context) error {
 		if err := i.compensationTaskRepo.UpdateCompleted(txCtx, taskID, result, errString); err != nil {
@@ -200,6 +201,7 @@ func (i *workflowInteractor) CompleteCompensationTask(
 
 		// Permanent failure — the saga rollback itself failed.
 		log.Printf("error: compensation task permanently failed stepIndex=%d err=%s", t.StepIndex, errString)
+		success = false
 
 		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
@@ -361,7 +363,7 @@ func (i *workflowInteractor) CompleteCompensationTask(
 	})
 
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// Trigger notification safely outside the transaction boundary
@@ -369,5 +371,5 @@ func (i *workflowInteractor) CompleteCompensationTask(
 		i.broker.Notify(notifyQueue)
 	}
 
-	return nil
+	return success, nil
 }
