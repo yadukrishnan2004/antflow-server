@@ -20,6 +20,7 @@ type Storage struct {
 	Checkpoint             *PostgresCheckpointRepository
 	CompensationTask       *PostgresCompensationTaskRepository
 	TxManager              *PostgresTransactionManager
+	db                     *sql.DB
 }
 
 type PostgresNamespaceRepository struct{ db *sql.DB }
@@ -89,6 +90,7 @@ func New(dsn string, cfg ...DBConfig) (*Storage, error) {
 		Checkpoint:             &PostgresCheckpointRepository{db: db},
 		CompensationTask:       &PostgresCompensationTaskRepository{db: db},
 		TxManager: 				&PostgresTransactionManager{db: db},
+		db:                     db,
 	}, nil
 }
 //------------------------------helper tx manager-------------------------------------------
@@ -108,4 +110,9 @@ func getDB(ctx context.Context, fallback *sql.DB) queryer {
 	return fallback
 }
 
-
+func (s *Storage) Close() error {
+	if s.db != nil {
+		return s.db.Close()
+	}
+	return nil
+}

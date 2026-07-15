@@ -11,6 +11,10 @@ import (
 	appgrpc "github.com/yadukrishnan2004/antflow-server/interface/grpc"
 	"github.com/yadukrishnan2004/antflow-server/usecase"
 	"google.golang.org/grpc"
+
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -79,8 +83,27 @@ func main() {
 	// Register the core WorkflowService RPCs.
 	pb.RegisterWorkflowServiceServer(grpcServer, workflowHandler)
 
-	log.Println("AntFlow server listening on :50051")
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve gRPC server: %v", err)
+	// 1. Channel to listen for OS signals (SIGINT, SIGTERM)
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	// 2. Run the gRPC server in a separate background goroutine
+	go func() {
+		log.Println("AntFlow server listening on :50051")
+		if err := grpcServer.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+			log.Fatalf("failed to serve gRPC server: %v", err)
+		}
+	}()
+	// 3. Block main thread until we receive a termination signal
+	sig := <-stopChan
+	log.Printf("info: received signal %v, initiating graceful shutdown...", sig)
+	// 4. Stop accepting new RPCs and drain in-flight streams
+	grpcServer.GracefulStop()
+	log.Println("info: gRPC server stopped gracefully")
+	// 5. Clean up database connections
+	if err := storage.Close(); err != nil {
+		log.Printf("error: failed to close storage pool: %v", err)
+	} else {
+		log.Println("info: database connection pool closed")
 	}
+	log.Println("info: shutdown complete. Exiting.")
 }
