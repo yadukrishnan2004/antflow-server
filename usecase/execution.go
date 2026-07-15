@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -100,17 +101,11 @@ func (i *workflowInteractor) StartWorkflow(
 }
 
 func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID string) error {
-	exec, err := i.executionRepo.GetByID(ctx, workflowID)
-	if err != nil {
-		return fmt.Errorf("failed to find execution: %w", err)
-	}
-
-	if err := workflow.ValidateTransition(exec.State, workflow.StateCancelled); err != nil {
-		return fmt.Errorf("cannot cancel workflow: %w", err)
-	}
-
-	err = i.txManager.RunInTx(ctx, func(txCtx context.Context) error {
+	err := i.txManager.RunInTx(ctx, func(txCtx context.Context) error {
 		if err := i.executionRepo.UpdateState(txCtx, workflowID, workflow.StateCancelled); err != nil {
+			if errors.Is(err, workflow.ErrConflict) {
+				return fmt.Errorf("cannot cancel workflow: %w", err)
+			}
 			return fmt.Errorf("failed to cancel execution: %w", err)
 		}
 
@@ -122,11 +117,13 @@ func (i *workflowInteractor) CancelWorkflow(ctx context.Context, workflowID stri
 			return fmt.Errorf("failed to cancel pending compensation tasks: %w", err)
 		}
 
-		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+		if err := i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: workflowID,
 			EventType:           workflow.EventWorkflowCancelled,
 			CreatedAt:           time.Now(),
-		})
+		}); err != nil {
+			return fmt.Errorf("failed to write history event: %w", err)
+		}
 		return nil
 	})
 

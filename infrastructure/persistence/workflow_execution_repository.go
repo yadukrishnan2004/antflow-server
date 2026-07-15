@@ -152,21 +152,34 @@ func (s *PostgresWorkflowExecutionRepository) UpdateState(
 	ctx context.Context, id string, state workflow.State,
 ) error {
 	var err error
+	var result sql.Result
+
 	switch state {
 	case workflow.StateCompleted, workflow.StateFailed, workflow.StateCancelled:
-		_, err = getDB(ctx, s.db).ExecContext(ctx,
+		result, err = getDB(ctx, s.db).ExecContext(ctx,
 			`UPDATE workflow_execution
 			 SET state=$1, completed_at=NOW(), updated_at=NOW()
 			 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
 			string(state), id)
 	default:
-		_, err = s.db.ExecContext(ctx,
+		result, err = s.db.ExecContext(ctx,
 			`UPDATE workflow_execution
 			 SET state=$1, updated_at=NOW()
 			 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
 			string(state), id)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return workflow.ErrConflict 
+	}
+	return nil
 }
 
 func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
