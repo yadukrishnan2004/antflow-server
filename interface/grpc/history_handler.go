@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"errors"
 	"time"
 
 	"github.com/yadukrishnan2004/antflow-server/api/grpc/pb"
@@ -9,25 +10,20 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// StreamWorkflowHistory polls for new history events and streams them to the
-// client as they appear, closing the stream once a terminal workflow event
-// is sent.
-//
-// Uses GetHistoryAfter (HistoryEventRepository.GetByExecutionAfter under the
-// hood) instead of GetHistory. The old version called GetHistory — a full
-// "every event for this execution" read — once per second for the entire
-// lifetime of the stream, re-filtering client-side with lastSentEventID on
-// every tick. For a long-running workflow with hundreds of history events,
-// that's an O(n) DB read repeated O(seconds-until-completion) times. Asking
-// the DB for "only events after this ID" makes each tick O(new events)
-// instead, and removes the need for the handler to do its own filtering.
+
 func (h *WorkflowHandler) StreamWorkflowHistory(req *pb.StreamWorkflowHistoryRequest, stream pb.WorkflowService_StreamWorkflowHistoryServer) error {
 	if req.WorkflowId == "" {
 		return status.Error(codes.InvalidArgument, "workflow id is required")
 	}
-
+	// NEW: Validate that the workflow execution actually exists before polling
+	_, err := h.service.GetWorkflowResult(stream.Context(), req.WorkflowId)
+	if err != nil {
+		if errors.Is(err, workflow.ErrNotFound) {
+			return status.Errorf(codes.NotFound, "workflow execution %q not found", req.WorkflowId)
+		}
+		return status.Errorf(codes.Internal, "failed to verify workflow existence: %v", err)
+	}
 	lastSentEventID := int64(-1)
-
 	for {
 		select {
 		case <-stream.Context().Done():
