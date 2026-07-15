@@ -31,11 +31,13 @@ func (i *workflowInteractor) startCompensation(
 	}
 
 	// 2. Write COMPENSATION_STARTED event
-	_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
+	if err := i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 		WorkflowExecutionID: exec.ID,
 		EventType:           workflow.EventCompensationStarted,
 		CreatedAt:           time.Now(),
-	})
+	});err != nil {
+		return fmt.Errorf("failed to write history event: %w", err)
+	}
 
 	// 3. Get all steps that have a compensation handler, up to the step
 	// BEFORE the failed one. The failed step never completed so it has no
@@ -86,17 +88,21 @@ func (i *workflowInteractor) startCompensation(
 		if err := i.executionRepo.UpdateState(ctx, exec.ID, workflow.StateFailed); err != nil {
 			return err
 		}
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
+		if err:= i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			EventType:           workflow.EventSagaRolledBack,
 			CreatedAt:           time.Now(),
-		})
-		_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
+		});err != nil {
+			return fmt.Errorf("failed to write history event: %w", err)
+		}
+		if err:= i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			EventType:           workflow.EventWorkflowFailed,
 			Error:               "Saga rolled back: no successful steps to compensate",
 			CreatedAt:           time.Now(),
-		})
+		});err != nil {
+			return fmt.Errorf("failed to write history event: %w", err)
+		}
 		i.signals.Drain(exec.ID)
 		return nil
 	}
@@ -129,13 +135,15 @@ func (i *workflowInteractor) startCompensation(
 	log.Printf("info: scheduled first compensation task id=%s stepIndex=%d stepName=%s compensationStep=%s",
 		ct.ID, ct.StepIndex, ct.StepName, ct.CompensationStepName)
 
-	_ = i.historyRepo.Append(ctx, &workflow.HistoryEvent{
+	if err:= i.historyRepo.Append(ctx, &workflow.HistoryEvent{
 		WorkflowExecutionID: exec.ID,
 		StepIndex:           &ct.StepIndex,
 		StepName:            &ct.StepName,
 		EventType:           workflow.EventStepScheduled,
 		CreatedAt:           time.Now(),
-	})
+	});err != nil {
+		return fmt.Errorf("failed to write history event: %w", err)
+	}
 
 	i.broker.Notify(q)
 	return nil
@@ -203,26 +211,32 @@ func (i *workflowInteractor) CompleteCompensationTask(
 		log.Printf("error: compensation task permanently failed stepIndex=%d err=%s", t.StepIndex, errString)
 		success = false
 
-		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+		if err:= i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
 			EventType:           workflow.EventCompensationFailed,
 			Error:               errString,
 			CreatedAt:           time.Now(),
-		})
-		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+		});err != nil {
+			return fmt.Errorf("failed to write history event: %w", err)
+		}
+		if err:= i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			EventType:           workflow.EventSagaRollbackFailed,
 			Error:               errString,
 			CreatedAt:           time.Now(),
-		})
-		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+		});err != nil {
+			return fmt.Errorf("failed to write history event: %w", err)
+		}
+		if err:= i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			EventType:           workflow.EventWorkflowFailed,
 			Error:               fmt.Sprintf("Saga rollback failed at step %s: %s", t.StepName, errString),
 			CreatedAt:           time.Now(),
-		})
+		});err != nil {
+			return fmt.Errorf("failed to write history event: %w", err)
+		}
 		// Save saga rollback failure reason to database
 		_ = i.executionRepo.SaveError(txCtx, exec.ID, fmt.Sprintf("Saga rollback failed at step %s: %s", t.StepName, errString))
 		_ = i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed)
@@ -234,14 +248,16 @@ func (i *workflowInteractor) CompleteCompensationTask(
 		// ── Compensation task SUCCEEDED ───────────────────────────────────────
 		log.Printf("info: compensation task succeeded stepIndex=%d stepName=%s", t.StepIndex, t.StepName)
 
-		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+		if err:= i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &t.StepIndex,
 			StepName:            &t.StepName,
 			EventType:           workflow.EventCompensationCompleted,
 			Payload:             result,
 			CreatedAt:           time.Now(),
-		})
+		});err != nil {
+			return fmt.Errorf("failed to write history event: %w", err)
+		}
 
 		newDone, err := i.executionRepo.IncrementCompensationDone(txCtx, exec.ID)
 		if err != nil {
@@ -262,17 +278,21 @@ func (i *workflowInteractor) CompleteCompensationTask(
 			if err := i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed); err != nil {
 				return err
 			}
-			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+			if err := i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				EventType:           workflow.EventSagaRolledBack,
 				CreatedAt:           time.Now(),
-			})
-			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+			});err != nil {
+				return fmt.Errorf("failed to write history event: %w", err)
+			}
+			if err := i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				EventType:           workflow.EventWorkflowFailed,
 				Error:               "Saga rolled back successfully",
 				CreatedAt:           time.Now(),
-			})
+			}); err != nil {
+				return fmt.Errorf("failed to write history event: %w", err)
+			}
 			log.Printf("info: saga rollback complete for exec=%s", exec.ID)
 			i.signals.Drain(exec.ID)
 			return nil
@@ -309,17 +329,21 @@ func (i *workflowInteractor) CompleteCompensationTask(
 			if err := i.executionRepo.UpdateState(txCtx, exec.ID, workflow.StateFailed); err != nil {
 				return err
 			}
-			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+			if err := i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				EventType:           workflow.EventSagaRolledBack,
 				CreatedAt:           time.Now(),
-			})
-			_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+			}); err != nil {
+				return fmt.Errorf("failed to write history event: %w", err)
+			}
+			if err:= i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 				WorkflowExecutionID: exec.ID,
 				EventType:           workflow.EventWorkflowFailed,
 				Error:               "Saga rolled back successfully",
 				CreatedAt:           time.Now(),
-			})
+			});err != nil {
+				return fmt.Errorf("failed to write history event: %w", err)
+			}
 			log.Printf("info: saga rollback complete (no more steps) for exec=%s", exec.ID)
 			i.signals.Drain(exec.ID)
 			return nil
@@ -349,13 +373,15 @@ func (i *workflowInteractor) CompleteCompensationTask(
 		log.Printf("info: scheduled next compensation task id=%s stepIndex=%d stepName=%s compensationStep=%s",
 			ct.ID, ct.StepIndex, ct.StepName, ct.CompensationStepName)
 
-		_ = i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
+		if err:= i.historyRepo.Append(txCtx, &workflow.HistoryEvent{
 			WorkflowExecutionID: exec.ID,
 			StepIndex:           &ct.StepIndex,
 			StepName:            &ct.StepName,
 			EventType:           workflow.EventStepScheduled,
 			CreatedAt:           time.Now(),
-		})
+		}); err != nil {
+			return fmt.Errorf("failed to write history event: %w", err)
+		}
 
 		// Queue broker notification for after transaction commits
 		notifyQueue = q
