@@ -18,7 +18,6 @@ type WorkflowService interface {
 	CompleteCompensationTask(ctx context.Context, taskID string, result []byte, errString string) (bool, error)
 	GetWorkflowResult(ctx context.Context, workflowID string) (*workflow.WorkflowExecution, error)
 	CancelWorkflow(ctx context.Context, workflowID string) error
-	GetHistory(ctx context.Context, workflowID string) ([]workflow.HistoryEvent, error)
 	GetHistoryAfter(ctx context.Context, workflowID string, afterID int64) ([]workflow.HistoryEvent, error)
 	GetWorkflowNameForExecution(ctx context.Context, executionID string) (string, error)
 	GetWorkflowIdForExecution(ctx context.Context, workflowName string) (string, error)
