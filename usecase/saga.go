@@ -125,6 +125,7 @@ func (i *workflowInteractor) startCompensation(
 		Input:                outputByStep[firstComp.StepIndex],
 		State:                workflow.StateCreated,
 		MaxAttempts:          firstComp.MaxAttempts,
+		TimeoutSeconds:       firstComp.TimeoutSeconds,
 		ScheduledAt:          time.Now(),
 	}
 
@@ -192,15 +193,16 @@ func (i *workflowInteractor) CompleteCompensationTask(
 					TaskQueue:            t.TaskQueue,
 					Input:                t.Input,
 					State:                workflow.StateCreated,
-					Attempt:              t.Attempt,
+					Attempt:              t.Attempt + 1,
 					MaxAttempts:          t.MaxAttempts,
-					ScheduledAt:          time.Now().Add(time.Duration(t.Attempt*t.Attempt) * 5 * time.Second),
+					TimeoutSeconds:       t.TimeoutSeconds,
+					ScheduledAt:          time.Now().Add(time.Duration((t.Attempt+1)*(t.Attempt+1)) * 5 * time.Second),
 				}
 				if err := i.compensationTaskRepo.Create(txCtx, retryTask); err != nil {
 					return fmt.Errorf("failed to create retry compensation task: %w", err)
 				}
 				log.Printf("info: retrying compensation task stepIndex=%d attempt=%d/%d",
-					t.StepIndex, t.Attempt, t.MaxAttempts)
+					t.StepIndex, t.Attempt+1, t.MaxAttempts)
 				
 				// Queue broker notification for after transaction commits
 				notifyQueue = t.TaskQueue
@@ -363,6 +365,7 @@ func (i *workflowInteractor) CompleteCompensationTask(
 			Input:                outputByStep[nextComp.StepIndex],
 			State:                workflow.StateCreated,
 			MaxAttempts:          nextComp.MaxAttempts,
+			TimeoutSeconds:       nextComp.TimeoutSeconds,
 			ScheduledAt:          time.Now(),
 		}
 

@@ -101,7 +101,7 @@ func (s *PostgresWorkflowExecutionRepository) GetByID(
 	var completedAt, deadlineAt sql.NullTime
 	var stateStr, wfTypeStr string
 
-	err := s.db.QueryRowContext(ctx, `
+	err := getDB(ctx, s.db).QueryRowContext(ctx, `
 		SELECT id, workflow_definition_id, input, result,
 		       state, COALESCE(error,''), current_step, completed_steps,
 		       created_at, scheduled_at, updated_at, completed_at,
@@ -210,7 +210,7 @@ func (s *PostgresWorkflowExecutionRepository) SaveResult(
 func (s *PostgresWorkflowExecutionRepository) IncrementCompletedSteps(
 	ctx context.Context, id string,
 ) (newCount int, err error) {
-	err = s.db.QueryRowContext(ctx,
+	err = getDB(ctx, s.db).QueryRowContext(ctx,
 		`UPDATE workflow_execution
 		 SET    completed_steps = completed_steps + 1, updated_at = NOW()
 		 WHERE  id = $1
@@ -223,7 +223,7 @@ func (s *PostgresWorkflowExecutionRepository) IncrementCompletedSteps(
 func (s *PostgresWorkflowExecutionRepository) IncrementCompensationDone(
 	ctx context.Context, id string,
 ) (newCount int, err error) {
-	err = s.db.QueryRowContext(ctx,
+	err = getDB(ctx, s.db).QueryRowContext(ctx,
 		`UPDATE workflow_execution
 		 SET    compensation_done = compensation_done + 1, updated_at = NOW()
 		 WHERE  id = $1

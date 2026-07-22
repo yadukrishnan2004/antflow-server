@@ -49,6 +49,8 @@ func (s *PostgresCompensationTaskRepository) Migrate() error {
 		ALTER TABLE compensation_task ADD CONSTRAINT chk_compensation_task_state
 			CHECK (state IN ('CREATED','SCHEDULED','RUNNING','COMPLETED','FAILED','CANCELLED'));
 
+		ALTER TABLE compensation_task ADD COLUMN IF NOT EXISTS timeout_seconds INTEGER NOT NULL DEFAULT 300;
+
 		CREATE INDEX IF NOT EXISTS idx_compensation_task_state_queue_scheduled
 			ON compensation_task (state, task_queue, scheduled_at);
 	`)
@@ -59,8 +61,8 @@ func (s *PostgresCompensationTaskRepository) Create(ctx context.Context, task *w
 	_, err := getDB(ctx, s.db).ExecContext(ctx, `
 		INSERT INTO compensation_task
 			(id, workflow_execution_id, step_index, step_name, compensation_step_name, task_queue,
-			 input, state, scheduled_at, attempt, max_attempts)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			 input, state, scheduled_at, attempt, max_attempts, timeout_seconds)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 	`,
 		task.ID,
 		task.WorkflowExecutionID,
@@ -73,6 +75,7 @@ func (s *PostgresCompensationTaskRepository) Create(ctx context.Context, task *w
 		task.ScheduledAt,
 		task.Attempt,
 		task.MaxAttempts,
+		task.TimeoutSeconds,
 	)
 	return err
 }
@@ -86,14 +89,14 @@ func (s *PostgresCompensationTaskRepository) GetByID(ctx context.Context, id str
 		SELECT id, workflow_execution_id, step_index, step_name, compensation_step_name, task_queue,
 		       input, output, state, COALESCE(error,''),
 		       scheduled_at, started_at, completed_at, locked_until,
-		       attempt, max_attempts
+		       attempt, max_attempts, timeout_seconds
 		FROM   compensation_task
 		WHERE  id = $1
 	`, id).Scan(
 		&task.ID, &task.WorkflowExecutionID, &task.StepIndex, &task.StepName, &task.CompensationStepName, &task.TaskQueue,
 		&task.Input, &task.Output, &stateStr, &task.Error,
 		&task.ScheduledAt, &startedAt, &completedAt, &lockedUntil,
-		&task.Attempt, &task.MaxAttempts,
+		&task.Attempt, &task.MaxAttempts, &task.TimeoutSeconds,
 	)
 	if err == sql.ErrNoRows {
 		return nil, workflow.ErrNotFound
@@ -126,7 +129,7 @@ func (s *PostgresCompensationTaskRepository) FindAndLockPending(
 
 	row := tx.QueryRowContext(ctx, `
 		SELECT id, workflow_execution_id, step_index, step_name, compensation_step_name,
-		       task_queue, input, state, attempt, max_attempts, scheduled_at
+		       task_queue, input, state, attempt, max_attempts, timeout_seconds, scheduled_at
 		FROM   compensation_task
 		WHERE  (
 			(state = 'CREATED' AND task_queue = $1 AND scheduled_at <= NOW())
@@ -142,7 +145,7 @@ func (s *PostgresCompensationTaskRepository) FindAndLockPending(
 	var stateStr string
 	err = row.Scan(
 		&t.ID, &t.WorkflowExecutionID, &t.StepIndex, &t.StepName, &t.CompensationStepName,
-		&t.TaskQueue, &t.Input, &stateStr, &t.Attempt, &t.MaxAttempts,
+		&t.TaskQueue, &t.Input, &stateStr, &t.Attempt, &t.MaxAttempts, &t.TimeoutSeconds,
 		&t.ScheduledAt,
 	)
 	if err == sql.ErrNoRows {
@@ -152,7 +155,11 @@ func (s *PostgresCompensationTaskRepository) FindAndLockPending(
 		return nil, err
 	}
 
-	lockedUntil := time.Now().Add(5 * time.Minute)
+	timeoutSecs := t.TimeoutSeconds
+	if timeoutSecs <= 0 {
+		timeoutSecs = 300
+	}
+	lockedUntil := time.Now().Add(time.Duration(timeoutSecs) * time.Second)
 	_, err = tx.ExecContext(ctx, `
 		UPDATE compensation_task
 		SET    state        = 'RUNNING',
@@ -199,11 +206,11 @@ func (s *PostgresCompensationTaskRepository) Delete(ctx context.Context, id stri
 func (s *PostgresCompensationTaskRepository) GetPendingByExecution(
 	ctx context.Context, executionID string,
 ) ([]workflow.CompensationTask, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := getDB(ctx, s.db).QueryContext(ctx, `
 		SELECT id, workflow_execution_id, step_index, step_name, compensation_step_name, task_queue,
 		       input, output, state, COALESCE(error,''),
 		       scheduled_at, started_at, completed_at, locked_until,
-		       attempt, max_attempts
+		       attempt, max_attempts, timeout_seconds
 		FROM   compensation_task
 		WHERE  workflow_execution_id = $1 AND state IN ('CREATED', 'RUNNING', 'SCHEDULED')
 		ORDER  BY step_index DESC
@@ -222,7 +229,7 @@ func (s *PostgresCompensationTaskRepository) GetPendingByExecution(
 			&t.ID, &t.WorkflowExecutionID, &t.StepIndex, &t.StepName, &t.CompensationStepName, &t.TaskQueue,
 			&t.Input, &t.Output, &stateStr, &t.Error,
 			&t.ScheduledAt, &startedAt, &completedAt, &lockedUntil,
-			&t.Attempt, &t.MaxAttempts,
+			&t.Attempt, &t.MaxAttempts, &t.TimeoutSeconds,
 		); err != nil {
 			return nil, err
 		}
@@ -252,7 +259,7 @@ func (s *PostgresCompensationTaskRepository) CancelByExecution(ctx context.Conte
 }
 
 func (s *PostgresCompensationTaskRepository) RenewLock(ctx context.Context, taskID string) error {
-	result, err := s.db.ExecContext(ctx, `
+	result, err := getDB(ctx, s.db).ExecContext(ctx, `
 		UPDATE compensation_task
 		SET    locked_until = NOW() + INTERVAL '5 minutes'
 		WHERE  id = $1 AND state = 'RUNNING'

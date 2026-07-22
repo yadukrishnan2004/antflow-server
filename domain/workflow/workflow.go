@@ -126,6 +126,7 @@ type CompensationTask struct {
 	Error                string
 	Attempt              int
 	MaxAttempts          int
+	TimeoutSeconds       int
 	ScheduledAt          time.Time
 	StartedAt            time.Time
 	CompletedAt          time.Time

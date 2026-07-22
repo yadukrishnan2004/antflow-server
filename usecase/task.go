@@ -63,9 +63,9 @@ func (i *workflowInteractor) CompleteTask(ctx context.Context, taskID string, re
 					TaskQueue:           t.TaskQueue,
 					Input:               t.Input,
 					State:               workflow.StateCreated,
-					Attempt:             t.Attempt,
+					Attempt:             t.Attempt + 1,
 					MaxAttempts:         t.MaxAttempts,
-					ScheduledAt:         time.Now().Add(time.Duration(t.Attempt*t.Attempt) * 5 * time.Second),
+					ScheduledAt:         time.Now().Add(time.Duration((t.Attempt+1)*(t.Attempt+1)) * 5 * time.Second),
 					TimeoutSeconds:      t.TimeoutSeconds, 
 				}
 				if err := i.taskRepo.Create(txCtx, retryTask); err != nil {

@@ -222,7 +222,7 @@ func (s *PostgresTaskRepository) Delete(ctx context.Context, id string) error {
 }
 
 func (s *PostgresTaskRepository) UpdateState(ctx context.Context, id string, state workflow.State) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := getDB(ctx, s.db).ExecContext(ctx,
 		`UPDATE task SET state=$1, locked_until=NULL WHERE id=$2`,
 		string(state), id)
 	return err
@@ -260,7 +260,7 @@ func (s *PostgresTaskRepository) ResetTimedOutTasks() error {
 
 func (s *PostgresTaskRepository) HasActiveTasks(ctx context.Context, executionID string) (bool, error) {
 	var count int
-	err := s.db.QueryRowContext(ctx, `
+	err := getDB(ctx, s.db).QueryRowContext(ctx, `
         SELECT COUNT(*) FROM task 
         WHERE workflow_execution_id = $1 AND state IN ('CREATED', 'SCHEDULED', 'RUNNING')
     `, executionID).Scan(&count)
@@ -269,7 +269,7 @@ func (s *PostgresTaskRepository) HasActiveTasks(ctx context.Context, executionID
 
 
 func (s *PostgresTaskRepository) RenewLock(ctx context.Context, taskID string) error {
-	result, err := s.db.ExecContext(ctx, `
+	result, err := getDB(ctx, s.db).ExecContext(ctx, `
 		UPDATE task
 		SET    locked_until = NOW() + (timeout_seconds || ' seconds')::INTERVAL
 		WHERE  id = $1 AND state = 'RUNNING'

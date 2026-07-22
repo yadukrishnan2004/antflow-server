@@ -92,7 +92,7 @@ func (s *PostgresHistoryEventRepository) GetByExecutionAfter(
 func (s *PostgresHistoryEventRepository) GetStepOutputs(
 	ctx context.Context, executionID string,
 ) ([]workflow.TaskOutput, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := getDB(ctx, s.db).QueryContext(ctx, `
 		SELECT step_index, step_name, payload
 		FROM   history_event
 		WHERE  workflow_execution_id = $1
@@ -134,7 +134,7 @@ func (s *PostgresHistoryEventRepository) GetStepOutputs(
 func (s *PostgresHistoryEventRepository) queryEvents(
 	ctx context.Context, query string, args ...any,
 ) ([]workflow.HistoryEvent, error) {
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := getDB(ctx, s.db).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
