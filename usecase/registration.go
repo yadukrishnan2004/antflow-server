@@ -86,6 +86,11 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 				maxAttempts = stepMaxAttempts[idx]
 			}
 
+			timeout := defaultTimeoutSeconds
+			if timeout <= 0 {
+				timeout = 300
+			}
+
 			step := &workflow.WorkflowDefinitionStep{
 				ID:                   uuid.New().String(),
 				WorkflowDefinitionID: wf.ID,
@@ -93,7 +98,7 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 				CompensationStepName: compName,
 				StepIndex:            idx + 1,
 				MaxAttempts:          maxAttempts,
-				TimeoutSeconds:       defaultTimeoutSeconds,
+				TimeoutSeconds:       timeout,
 			}
 			if err := w.workflowStepRepo.Create(txCtx, step); err != nil {
 				return fmt.Errorf("failed to create workflow steps: %w", err)

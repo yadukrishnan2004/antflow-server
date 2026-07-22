@@ -31,6 +31,8 @@ func (s *PostgresWorkflowDefinitionStepRepository) Migrate() error {
 		);
 
 		ALTER TABLE workflow_definition_step ADD COLUMN IF NOT EXISTS compensation_step_name TEXT;
+		ALTER TABLE workflow_definition_step ADD COLUMN IF NOT EXISTS timeout_seconds INTEGER NOT NULL DEFAULT 300;
+		ALTER TABLE workflow_definition_step ADD COLUMN IF NOT EXISTS max_attempts INTEGER NOT NULL DEFAULT 3;
 	`)
 	return err
 }

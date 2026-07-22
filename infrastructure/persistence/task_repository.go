@@ -53,6 +53,10 @@ func (s *PostgresTaskRepository) Migrate() error {
 				CHECK (max_attempts > 0)
 		);
 
+		ALTER TABLE task ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE task ADD COLUMN IF NOT EXISTS max_attempts INTEGER NOT NULL DEFAULT 3;
+		ALTER TABLE task ADD COLUMN IF NOT EXISTS timeout_seconds INTEGER NOT NULL DEFAULT 300;
+
 		-- Widen the constraint for tables created before CANCELLED was added.
 		-- IF EXISTS guards re-runs against fresh databases where the table was
 		-- just created above with the constraint already in its final form.

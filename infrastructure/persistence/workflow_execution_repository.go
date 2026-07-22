@@ -162,7 +162,7 @@ func (s *PostgresWorkflowExecutionRepository) UpdateState(
 			 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
 			string(state), id)
 	default:
-		result, err = s.db.ExecContext(ctx,
+		result, err = getDB(ctx, s.db).ExecContext(ctx,
 			`UPDATE workflow_execution
 			 SET state=$1, updated_at=NOW()
 			 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
@@ -185,7 +185,7 @@ func (s *PostgresWorkflowExecutionRepository) UpdateState(
 func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
 	ctx context.Context, id string, nextStep int,
 ) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := getDB(ctx, s.db).ExecContext(ctx,
 		`UPDATE workflow_execution
 		 SET current_step=$1, updated_at=NOW()
 		 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
@@ -196,7 +196,7 @@ func (s *PostgresWorkflowExecutionRepository) UpdateStepCursor(
 func (s *PostgresWorkflowExecutionRepository) SaveResult(
 	ctx context.Context, id string, result []byte,
 ) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := getDB(ctx, s.db).ExecContext(ctx,
 		`UPDATE workflow_execution
 		 SET result=$1, updated_at=NOW()
 		 WHERE id=$2 AND state NOT IN ('COMPLETED','FAILED','CANCELLED')`,
@@ -236,7 +236,7 @@ func (s *PostgresWorkflowExecutionRepository) IncrementCompensationDone(
 func (s *PostgresWorkflowExecutionRepository) SetCompensationTotal(
 	ctx context.Context, id string, total int,
 ) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := getDB(ctx, s.db).ExecContext(ctx,
 		`UPDATE workflow_execution
 		 SET    compensation_total = $1, updated_at = NOW()
 		 WHERE  id = $2`,

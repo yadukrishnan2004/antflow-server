@@ -22,7 +22,7 @@ func (s *PostgresNamespaceRepository) Migrate() error {
 }
 
 func (s *PostgresNamespaceRepository) Create(ctx context.Context, ns *workflow.Namespace) error {
-	_, err := s.db.ExecContext(ctx,
+	_, err := getDB(ctx, s.db).ExecContext(ctx,
 		`INSERT INTO namespace (id, name, created_at) VALUES ($1, $2, $3)`,
 		ns.ID, ns.Name, ns.CreatedAt,
 	)
