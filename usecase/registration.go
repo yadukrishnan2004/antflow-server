@@ -93,6 +93,7 @@ func (w *workflowInteractor) RegisterWorkflow(ctx context.Context, name string, 
 				CompensationStepName: compName,
 				StepIndex:            idx + 1,
 				MaxAttempts:          maxAttempts,
+				TimeoutSeconds:       defaultTimeoutSeconds,
 			}
 			if err := w.workflowStepRepo.Create(txCtx, step); err != nil {
 				return fmt.Errorf("failed to create workflow steps: %w", err)
